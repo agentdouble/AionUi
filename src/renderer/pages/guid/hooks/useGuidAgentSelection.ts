@@ -75,6 +75,9 @@ type UseGuidAgentSelectionOptions = {
   localeKey: string;
 };
 
+const BUILTIN_COWORK_ID = 'builtin-cowork';
+const BUILTIN_COWORK_KEY = `custom:${BUILTIN_COWORK_ID}`;
+
 /**
  * Hook that manages agent selection, availability, and preset assistant logic.
  */
@@ -194,18 +197,27 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
 
     let cancelled = false;
 
+    const isAgentKeyAvailable = (key: string | null | undefined) => {
+      if (!key) return false;
+      if (key.startsWith('custom:')) {
+        const customId = key.slice(7);
+        return availableAgents.some((agent) => agent.backend === 'custom' && agent.customAgentId === customId);
+      }
+      return availableAgents.some((agent) => agent.backend === key);
+    };
+
     const loadLastSelectedAgent = async () => {
       try {
         const savedAgentKey = await ConfigStorage.get('guid.lastSelectedAgent');
-        if (cancelled || !savedAgentKey) return;
+        if (cancelled) return;
 
-        const isInAvailable = availableAgents.some((agent) => {
-          const key = agent.backend === 'custom' && agent.customAgentId ? `custom:${agent.customAgentId}` : agent.backend;
-          return key === savedAgentKey;
-        });
-
-        if (isInAvailable) {
+        if (typeof savedAgentKey === 'string' && isAgentKeyAvailable(savedAgentKey)) {
           _setSelectedAgentKey(savedAgentKey);
+          return;
+        }
+
+        if (isAgentKeyAvailable(BUILTIN_COWORK_KEY)) {
+          setSelectedAgentKey(BUILTIN_COWORK_KEY);
         }
       } catch (error) {
         console.error('Failed to load last selected agent:', error);
@@ -217,7 +229,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     return () => {
       cancelled = true;
     };
-  }, [availableAgents]);
+  }, [availableAgents, setSelectedAgentKey]);
 
   // Load custom agents
   useEffect(() => {
