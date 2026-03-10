@@ -75,14 +75,13 @@ type UseGuidAgentSelectionOptions = {
   localeKey: string;
 };
 
-const BUILTIN_COWORK_ID = 'builtin-cowork';
-const BUILTIN_COWORK_KEY = `custom:${BUILTIN_COWORK_ID}`;
+const DEFAULT_AGENT_KEY = 'opencode';
 
 /**
  * Hook that manages agent selection, availability, and preset assistant logic.
  */
 export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: UseGuidAgentSelectionOptions): GuidAgentSelectionResult => {
-  const [selectedAgentKey, _setSelectedAgentKey] = useState<string>('gemini');
+  const [selectedAgentKey, _setSelectedAgentKey] = useState<string>(DEFAULT_AGENT_KEY);
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>();
   const [customAgents, setCustomAgents] = useState<AcpBackendConfig[]>([]);
   const [selectedMode, _setSelectedMode] = useState<string>('default');
@@ -180,7 +179,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
   const { data: availableAgentsData } = useSWR('acp.agents.available', async () => {
     const result = await ipcBridge.acpConversation.getAvailableAgents.invoke();
     if (result.success) {
-      return result.data.filter((agent) => !(agent.backend === 'gemini' && agent.cliPath));
+      return result.data.filter((agent) => agent.backend === 'opencode');
     }
     return [];
   });
@@ -216,8 +215,8 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
           return;
         }
 
-        if (isAgentKeyAvailable(BUILTIN_COWORK_KEY)) {
-          setSelectedAgentKey(BUILTIN_COWORK_KEY);
+        if (isAgentKeyAvailable(DEFAULT_AGENT_KEY)) {
+          setSelectedAgentKey(DEFAULT_AGENT_KEY);
         }
       } catch (error) {
         console.error('Failed to load last selected agent:', error);
@@ -504,7 +503,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
   );
 
   const getAvailableFallbackAgent = useCallback((): PresetAgentType | null => {
-    const fallbackOrder: PresetAgentType[] = ['gemini', 'claude', 'qwen', 'codex', 'codebuddy', 'opencode'];
+    const fallbackOrder: PresetAgentType[] = ['opencode'];
     for (const agentType of fallbackOrder) {
       if (isMainAgentAvailable(agentType)) {
         return agentType;
