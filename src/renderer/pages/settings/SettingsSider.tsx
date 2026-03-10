@@ -15,14 +15,14 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
   const menus = useMemo(
     () => [
       {
-        label: t('settings.model'),
-        icon: <LinkCloud />,
-        path: 'model',
-      },
-      {
         label: t('settings.assistants', { defaultValue: 'Assistants' }),
         icon: <Robot />,
         path: 'agent',
+      },
+      {
+        label: t('settings.model'),
+        icon: <LinkCloud />,
+        path: 'model',
       },
       {
         label: t('settings.tools'),

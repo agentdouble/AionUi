@@ -48,7 +48,7 @@ const PanelRoute: React.FC<{ layout: React.ReactElement }> = ({ layout }) => {
           <Route path='/settings/system' element={<SystemSettings />} />
           <Route path='/settings/about' element={<About />} />
           <Route path='/settings/tools' element={<ToolsSettings />} />
-          <Route path='/settings' element={<Navigate to='/settings/gemini' replace />} />
+          <Route path='/settings' element={<Navigate to='/settings/agent' replace />} />
           <Route path='/test/components' element={<ComponentsShowcase />} />
         </Route>
         <Route path='*' element={<Navigate to={status === 'authenticated' ? '/guid' : '/login'} replace />} />

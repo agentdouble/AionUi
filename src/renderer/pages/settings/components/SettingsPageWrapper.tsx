@@ -21,8 +21,8 @@ const SettingsPageWrapper: React.FC<SettingsPageWrapperProps> = ({ children, cla
 
   const menuItems = React.useMemo(
     () => [
-      { label: t('settings.model'), icon: <LinkCloud theme='outline' size='16' />, path: 'model' },
       { label: t('settings.assistants', { defaultValue: 'Assistants' }), icon: <Robot theme='outline' size='16' />, path: 'agent' },
+      { label: t('settings.model', { defaultValue: 'Model' }), icon: <LinkCloud theme='outline' size='16' />, path: 'model' },
       { label: t('settings.tools'), icon: <Toolkit theme='outline' size='16' />, path: 'tools' },
       { label: t('settings.display'), icon: <Computer theme='outline' size='16' />, path: 'display' },
       { label: t('settings.system'), icon: <System theme='outline' size='16' />, path: 'system' },
