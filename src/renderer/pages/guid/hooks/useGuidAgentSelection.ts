@@ -123,16 +123,6 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     });
   }, []);
 
-  const availableCustomAgentIds = useMemo(() => {
-    const ids = new Set<string>();
-    (availableAgents || []).forEach((agent) => {
-      if (agent.backend === 'custom' && agent.customAgentId) {
-        ids.add(agent.customAgentId);
-      }
-    });
-    return ids;
-  }, [availableAgents]);
-
   /**
    * Get agent key for selection.
    * Returns "custom:uuid" for custom agents, backend type for others.
@@ -231,21 +221,13 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
   }, [availableAgents, setSelectedAgentKey]);
 
   // Load custom agents
+  const { data: customAgentsData } = useSWR('acp.customAgents', () => ConfigStorage.get('acp.customAgents'));
+
   useEffect(() => {
-    let isActive = true;
-    ConfigStorage.get('acp.customAgents')
-      .then((agents) => {
-        if (!isActive) return;
-        const list = (agents || []).filter((agent: AcpBackendConfig) => availableCustomAgentIds.has(agent.id));
-        setCustomAgents(list);
-      })
-      .catch((error) => {
-        console.error('Failed to load custom agents:', error);
-      });
-    return () => {
-      isActive = false;
-    };
-  }, [availableCustomAgentIds]);
+    if (customAgentsData) {
+      setCustomAgents(customAgentsData || []);
+    }
+  }, [customAgentsData]);
 
   // Load cached ACP model lists
   useEffect(() => {

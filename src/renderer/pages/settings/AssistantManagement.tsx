@@ -9,7 +9,7 @@ import type { AcpBackendConfig, PresetAgentType } from '@/types/acpTypes';
 import type { Message } from '@arco-design/web-react';
 import { Avatar, Button, Checkbox, Collapse, Drawer, Input, Modal, Select, Switch, Typography } from '@arco-design/web-react';
 import { Close, Delete, FolderOpen, Plus, Robot, SettingOne } from '@icon-park/react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mutate } from 'swr';
 
@@ -54,7 +54,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
   const [editDescription, setEditDescription] = useState('');
   const [editContext, setEditContext] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
-  const [editAgent, setEditAgent] = useState<PresetAgentType>('gemini');
+  const [editAgent, setEditAgent] = useState<PresetAgentType>('opencode');
   const [editSkills, setEditSkills] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
@@ -67,7 +67,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
   const [skillsModalVisible, setSkillsModalVisible] = useState(false);
   const [skillPath, setSkillPath] = useState(''); // Skill folder path input
   const [commonPaths, setCommonPaths] = useState<Array<{ name: string; path: string }>>([]); // Common skill paths detected
-  const [availableBackends, setAvailableBackends] = useState<Set<string>>(new Set(['gemini']));
+  const [availableBackends, setAvailableBackends] = useState<Set<string>>(new Set(['opencode']));
   const [pendingSkills, setPendingSkills] = useState<PendingSkill[]>([]); // 待导入的 skills / Pending skills to import
   const [deletePendingSkillName, setDeletePendingSkillName] = useState<string | null>(null); // 待删除的 pending skill 名称 / Pending skill name to delete
   const [deleteCustomSkillName, setDeleteCustomSkillName] = useState<string | null>(null); // 待从助手移除的 custom skill 名称 / Custom skill to remove from assistant
@@ -108,10 +108,17 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
       try {
         const resp = await ipcBridge.acpConversation.getAvailableAgents.invoke();
         if (resp.success && resp.data) {
-          setAvailableBackends(new Set(resp.data.map((a) => a.backend)));
+          const filtered = resp.data.filter((agent) => agent.backend === 'opencode').map((agent) => agent.backend);
+          if (filtered.length > 0) {
+            setAvailableBackends(new Set(filtered));
+          } else {
+            setAvailableBackends(new Set(['opencode']));
+          }
+        } else {
+          setAvailableBackends(new Set(['opencode']));
         }
       } catch {
-        // fallback to default
+        setAvailableBackends(new Set(['opencode']));
       }
     })();
   }, []);
@@ -206,6 +213,13 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
   }, [loadAssistants]);
 
   const activeAssistant = assistants.find((assistant) => assistant.id === activeAssistantId) || null;
+  const selectableBackends = useMemo(() => {
+    const result = new Set(availableBackends);
+    if (activeAssistant?.isBuiltin && activeAssistant.presetAgentType) {
+      result.add(activeAssistant.presetAgentType);
+    }
+    return result;
+  }, [availableBackends, activeAssistant?.isBuiltin, activeAssistant?.presetAgentType]);
 
   // Check if string is an emoji (simple check for common emoji patterns)
   const isEmoji = useCallback((str: string) => {
@@ -240,7 +254,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditName(assistant.name || '');
     setEditDescription(assistant.description || '');
     setEditAvatar(assistant.avatar || '');
-    setEditAgent(assistant.presetAgentType || 'gemini');
+    setEditAgent(assistant.presetAgentType || 'opencode');
     setEditVisible(true);
 
     // 先加载规则、技能内容 / Load rules, skills content
@@ -279,7 +293,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditDescription('');
     setEditContext('');
     setEditAvatar('🤖');
-    setEditAgent('gemini');
+    setEditAgent('opencode');
     setEditSkills('');
     setSelectedSkills([]); // 没有启用的 skills
     setCustomSkills([]); // 没有通过 Add Skills 添加的 skills
@@ -303,7 +317,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditName(`${assistant.nameI18n?.[localeKey] || assistant.name} (Copy)`);
     setEditDescription(assistant.descriptionI18n?.[localeKey] || assistant.description || '');
     setEditAvatar(assistant.avatar || '🤖');
-    setEditAgent(assistant.presetAgentType || 'gemini');
+    setEditAgent(assistant.presetAgentType || 'opencode');
     setPromptViewMode('edit');
     setEditVisible(true);
 
@@ -391,6 +405,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
 
         const updatedAgents = [...agents, newAssistant];
         await ConfigStorage.set('acp.customAgents', updatedAgents);
+        await mutate('acp.customAgents');
         setAssistants(sortAssistants(updatedAgents));
         setActiveAssistantId(newId);
         message.success(t('common.createSuccess', { defaultValue: 'Created successfully' }));
@@ -419,6 +434,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
 
         const updatedAgents = agents.map((agent) => (agent.id === activeAssistant.id ? updatedAgent : agent));
         await ConfigStorage.set('acp.customAgents', updatedAgents);
+        await mutate('acp.customAgents');
         setAssistants(sortAssistants(updatedAgents));
         message.success(t('common.saveSuccess', { defaultValue: 'Saved successfully' }));
       }
@@ -452,6 +468,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
       const agents = (await ConfigStorage.get('acp.customAgents')) || [];
       const updatedAgents = agents.filter((agent) => agent.id !== activeAssistant.id);
       await ConfigStorage.set('acp.customAgents', updatedAgents);
+      await mutate('acp.customAgents');
 
       // Apply sorting / 应用排序
       const sortedAssistants = sortAssistants(updatedAgents);
@@ -473,6 +490,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
       const agents = (await ConfigStorage.get('acp.customAgents')) || [];
       const updatedAgents = agents.map((agent) => (agent.id === assistant.id ? { ...agent, enabled } : agent));
       await ConfigStorage.set('acp.customAgents', updatedAgents);
+      await mutate('acp.customAgents');
 
       // Apply sorting / 应用排序
       setAssistants(sortAssistants(updatedAgents));
@@ -645,7 +663,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
             </div>
             <div className='flex-shrink-0'>
               <Typography.Text bold>{t('settings.assistantMainAgent', { defaultValue: 'Main Agent' })}</Typography.Text>
-              <Select className='mt-10px w-full rounded-4px' value={editAgent} onChange={(value) => setEditAgent(value as PresetAgentType)}>
+              <Select className='mt-10px w-full rounded-4px' value={editAgent} disabled={activeAssistant?.isBuiltin} onChange={(value) => setEditAgent(value as PresetAgentType)}>
                 {[
                   { value: 'gemini', label: 'Gemini CLI' },
                   { value: 'claude', label: 'Claude Code' },
@@ -654,7 +672,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
                   { value: 'codebuddy', label: 'CodeBuddy' },
                   { value: 'opencode', label: 'OpenCode' },
                 ]
-                  .filter((opt) => availableBackends.has(opt.value))
+                  .filter((opt) => selectableBackends.has(opt.value))
                   .map((opt) => (
                     <Select.Option key={opt.value} value={opt.value}>
                       {opt.label}
