@@ -47,7 +47,6 @@ export const AGENT_MODES: Record<string, AgentModeOption[]> = {
   ],
   opencode: [
     { value: 'build', label: 'Build' },
-    { value: 'plan', label: 'Plan' },
   ],
   iflow: [
     { value: 'default', label: 'Default' },
@@ -87,5 +86,6 @@ export function getAgentModes(backend: string | undefined): AgentModeOption[] {
  */
 export function supportsModeSwitch(backend: string | undefined): boolean {
   if (!backend) return false;
+  if (backend === 'opencode') return false;
   return backend in AGENT_MODES && AGENT_MODES[backend].length > 0;
 }

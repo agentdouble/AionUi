@@ -84,7 +84,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
   const [selectedAgentKey, _setSelectedAgentKey] = useState<string>(DEFAULT_AGENT_KEY);
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>();
   const [customAgents, setCustomAgents] = useState<AcpBackendConfig[]>([]);
-  const [selectedMode, _setSelectedMode] = useState<string>('default');
+  const [selectedMode, _setSelectedMode] = useState<string>('build');
   // Track whether mode was loaded from preferences to avoid overwriting during initial load
   const selectedAgentRef = useRef<string | null>(null);
   const probedModelBackendsRef = useRef(new Set<string>());
@@ -104,7 +104,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     _setSelectedMode((prev) => {
       const newMode = typeof mode === 'function' ? mode(prev) : mode;
       const agentKey = selectedAgentRef.current;
-      if (agentKey) {
+      if (agentKey && agentKey !== 'opencode') {
         void savePreferredMode(agentKey, newMode);
       }
       return newMode;
@@ -323,9 +323,10 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
 
   // Read preferred mode or fallback to legacy yoloMode config
   useEffect(() => {
-    _setSelectedMode('default');
+    const defaultMode = selectedAgent === 'opencode' ? 'build' : 'default';
+    _setSelectedMode(defaultMode);
     selectedAgentRef.current = selectedAgent;
-    if (!selectedAgent) return;
+    if (!selectedAgent || selectedAgent === 'opencode') return;
 
     let cancelled = false;
 
