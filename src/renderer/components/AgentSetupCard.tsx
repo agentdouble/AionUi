@@ -30,6 +30,7 @@ import DroidLogo from '@/renderer/assets/logos/droid.svg';
 import GooseLogo from '@/renderer/assets/logos/goose.svg';
 import AuggieLogo from '@/renderer/assets/logos/auggie.svg';
 import KimiLogo from '@/renderer/assets/logos/kimi.svg';
+import MiaLogo from '@/renderer/assets/logos/mia.svg';
 
 const AGENT_LOGOS: Partial<Record<AcpBackendAll, string>> = {
   claude: ClaudeLogo,
@@ -43,6 +44,7 @@ const AGENT_LOGOS: Partial<Record<AcpBackendAll, string>> = {
   goose: GooseLogo,
   auggie: AuggieLogo,
   kimi: KimiLogo,
+  mia: MiaLogo,
 };
 
 type AgentSetupCardProps = {

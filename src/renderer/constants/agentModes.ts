@@ -49,6 +49,10 @@ export const AGENT_MODES: Record<string, AgentModeOption[]> = {
     { value: 'build', label: 'Build' },
     { value: 'plan', label: 'Plan' },
   ],
+  mia: [
+    { value: 'build', label: 'Build' },
+    { value: 'plan', label: 'Plan' },
+  ],
   iflow: [
     { value: 'default', label: 'Default' },
     { value: 'smart', label: 'Smart' },
