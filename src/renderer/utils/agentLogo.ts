@@ -20,6 +20,8 @@ import GitHubLogo from '@/renderer/assets/logos/github.svg';
 import GooseLogo from '@/renderer/assets/logos/goose.svg';
 import IflowLogo from '@/renderer/assets/logos/iflow.svg';
 import KimiLogo from '@/renderer/assets/logos/kimi.svg';
+import MiaDarkLogo from '@/renderer/assets/logos/mia-dark.svg';
+import MiaLightLogo from '@/renderer/assets/logos/mia-light.svg';
 import MistralLogo from '@/renderer/assets/logos/mistral.svg';
 import NanobotLogo from '@/renderer/assets/logos/nanobot.svg';
 import OpenClawLogo from '@/renderer/assets/logos/openclaw.svg';
@@ -47,6 +49,7 @@ const AGENT_LOGO_MAP = {
   auggie: AuggieLogo,
   kimi: KimiLogo,
   opencode: OpenCodeLogoLight,
+  mia: MiaLightLogo,
   copilot: GitHubLogo,
   openclaw: OpenClawLogo,
   'openclaw-gateway': OpenClawLogo,
@@ -78,6 +81,9 @@ export function getAgentLogo(agent: string | undefined | null): string | null {
   const key = agent.toLowerCase() as keyof typeof AGENT_LOGO_MAP;
   if (key === 'opencode') {
     return isDarkTheme() ? OpenCodeLogoDark : OpenCodeLogoLight;
+  }
+  if (key === 'mia') {
+    return isDarkTheme() ? MiaDarkLogo : MiaLightLogo;
   }
   return AGENT_LOGO_MAP[key] || null;
 }

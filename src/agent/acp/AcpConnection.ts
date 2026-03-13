@@ -63,6 +63,10 @@ export function createGenericSpawnConfig(cliPath: string, workingDir: string, ac
     spawnArgs = effectiveAcpArgs;
   }
 
+  // Pass working directory as OPENCODE_CWD env var for backends (like mia) where
+  // an intermediate launcher (e.g., bun --cwd) overrides process.cwd()
+  env.OPENCODE_CWD = workingDir;
+
   const options: SpawnOptions = {
     cwd: workingDir,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -311,6 +315,7 @@ export class AcpConnection {
       case 'auggie':
       case 'kimi':
       case 'opencode':
+      case 'mia':
       case 'copilot':
       case 'qoder':
       case 'vibe':
