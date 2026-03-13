@@ -22,16 +22,19 @@ import { useGuidModelSelection } from './hooks/useGuidModelSelection';
 import { useGuidSend } from './hooks/useGuidSend';
 import { useTypewriterPlaceholder } from './hooks/useTypewriterPlaceholder';
 import { ConfigProvider } from '@arco-design/web-react';
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import styles from './index.module.css';
+
+const ROTATING_PLACEHOLDERS = ['améliore le rapport', 'mets à jour le powerpoint.', "ajoute une colonne dans l'excel"] as const;
 
 const GuidPage: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const guidContainerRef = useRef<HTMLDivElement>(null);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const { closeAllTabs, openTab } = useConversationTabs();
   const { activeBorderColor, inactiveBorderColor, activeShadow } = useInputFocusRing();
   const localeKey = resolveLocaleKey(i18n.language);
@@ -199,8 +202,18 @@ const GuidPage: React.FC = () => {
     [agentSelection.setSelectedAgentKey, mention.setMentionOpen, mention.setMentionQuery, mention.setMentionSelectorOpen, mention.setMentionActiveIndex]
   );
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % ROTATING_PLACEHOLDERS.length);
+    }, 4500);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   // Typewriter placeholder
-  const typewriterPlaceholder = useTypewriterPlaceholder(t('conversation.welcome.placeholder'));
+  const typewriterPlaceholder = useTypewriterPlaceholder(ROTATING_PLACEHOLDERS[placeholderIndex]);
 
   // Determine if model selector should be in Gemini mode
   const isGeminiMode = (agentSelection.selectedAgent === 'gemini' && !agentSelection.isPresetAgent) || (agentSelection.isPresetAgent && agentSelection.currentEffectiveAgentInfo.agentType === 'gemini' && agentSelection.currentEffectiveAgentInfo.isAvailable);

@@ -8,6 +8,7 @@ import { ipcBridge } from '@/common';
 import { ConfigStorage, type ICssTheme } from '@/common/storage';
 import PwaPullToRefresh from '@/renderer/components/PwaPullToRefresh';
 import Titlebar from '@/renderer/components/Titlebar';
+import AppLogo from '@/renderer/assets/logos/app.png';
 import { Layout as ArcoLayout } from '@arco-design/web-react';
 import { MenuFold, MenuUnfold } from '@icon-park/react';
 import classNames from 'classnames';
@@ -285,25 +286,10 @@ const Layout: React.FC<{
                 'cursor-pointer group ': collapsed,
               })}
             >
-              <div
-                className={classNames('bg-black shrink-0 size-40px relative rd-0.5rem', {
-                  '!size-24px': collapsed,
-                })}
-                onClick={onClick}
-              >
-                <svg
-                  className={classNames('w-5.5 h-5.5 absolute inset-0 m-auto', {
-                    ' scale-140': !collapsed,
-                  })}
-                  viewBox='0 0 80 80'
-                  fill='none'
-                >
-                  <path key='logo-path-1' d='M40 20 Q38 22 25 40 Q23 42 26 42 L30 42 Q32 40 40 30 Q48 40 50 42 L54 42 Q57 42 55 40 Q42 22 40 20' fill='white'></path>
-                  <circle key='logo-circle' cx='40' cy='46' r='3' fill='white'></circle>
-                  <path key='logo-path-2' d='M18 50 Q40 70 62 50' stroke='white' strokeWidth='3.5' fill='none' strokeLinecap='round'></path>
-                </svg>
+              <div className='flex items-center gap-12px flex-1 collapsed-hidden' onClick={onClick}>
+                <img src={AppLogo} alt='Cowork logo' className='size-40px object-contain rd-12px' />
+                <div className='text-20px text-1 font-bold'>Cowork</div>
               </div>
-              <div className='flex-1 text-20px text-1 collapsed-hidden font-bold'>AionUi</div>
               {isMobile && !collapsed && (
                 <button type='button' className='app-titlebar__button' onClick={() => setCollapsed(true)} aria-label='Collapse sidebar'>
                   {collapsed ? <MenuUnfold theme='outline' size='18' fill='currentColor' /> : <MenuFold theme='outline' size='18' fill='currentColor' />}
