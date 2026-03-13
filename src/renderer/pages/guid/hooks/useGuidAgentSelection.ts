@@ -79,7 +79,7 @@ type UseGuidAgentSelectionOptions = {
  * Hook that manages agent selection, availability, and preset assistant logic.
  */
 export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: UseGuidAgentSelectionOptions): GuidAgentSelectionResult => {
-  const [selectedAgentKey, _setSelectedAgentKey] = useState<string>('gemini');
+  const [selectedAgentKey, _setSelectedAgentKey] = useState<string>('mia');
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>();
   const [customAgents, setCustomAgents] = useState<AcpBackendConfig[]>([]);
   const [selectedMode, _setSelectedMode] = useState<string>('default');
@@ -177,9 +177,13 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
   const { data: availableAgentsData } = useSWR('acp.agents.available', async () => {
     const result = await ipcBridge.acpConversation.getAvailableAgents.invoke();
     if (result.success) {
-      return result.data.filter((agent) => !(agent.backend === 'gemini' && agent.cliPath));
+      const miaAgent = result.data.find((agent) => agent.backend === 'mia');
+      if (miaAgent) {
+        return [{ ...miaAgent, name: 'mia' }];
+      }
+      return [{ backend: 'mia', name: 'mia' }];
     }
-    return [];
+    return [{ backend: 'mia', name: 'mia' }];
   });
 
   useEffect(() => {

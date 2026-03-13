@@ -181,6 +181,9 @@ const ChatConversation: React.FC<{
     if (!conversation || isGeminiConversation) return undefined;
     if (conversation.type === 'acp') {
       const extra = conversation.extra as { backend?: string; currentModelId?: string };
+      if (extra.backend === 'mia') {
+        return undefined;
+      }
       return <AcpModelSelector conversationId={conversation.id} backend={extra.backend} initialModelId={extra.currentModelId} />;
     }
     if (conversation.type === 'codex') {
