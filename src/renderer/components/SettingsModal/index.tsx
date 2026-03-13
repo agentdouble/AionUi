@@ -7,9 +7,8 @@
 import AionModal from '@/renderer/components/base/AionModal';
 import AionScrollArea from '@/renderer/components/base/AionScrollArea';
 import { iconColors } from '@/renderer/theme/colors';
-import { isElectronDesktop } from '@/renderer/utils/platform';
 import { Tabs } from '@arco-design/web-react';
-import { Computer, Earth, Gemini, Info, LinkCloud, Toolkit } from '@icon-park/react';
+import { Computer, LinkCloud, Toolkit } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -116,7 +115,7 @@ export const SubModal: React.FC<SubModalProps> = ({ visible, onCancel, title, ch
  * openSettings('system');
  * ```
  */
-const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaultTab = 'gemini' }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaultTab = 'model' }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingTab>(defaultTab);
   const [isMobile, setIsMobile] = useState(false);
@@ -152,18 +151,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaul
     };
   }, [handleResize]);
 
-  // 检测是否在 Electron 桌面环境 / Check if running in Electron desktop environment
-  const isDesktop = isElectronDesktop();
-
   // 菜单项配置 / Menu items configuration
   // WebUI 选项仅在桌面端显示，防止越权访问 / WebUI option only shown on desktop to prevent unauthorized access
   const menuItems = useMemo((): Array<{ key: SettingTab; label: string; icon: React.ReactNode }> => {
     const items: Array<{ key: SettingTab; label: string; icon: React.ReactNode }> = [
-      {
-        key: 'gemini',
-        label: t('settings.gemini'),
-        icon: <Gemini theme='outline' size='20' fill={iconColors.secondary} />,
-      },
       {
         key: 'model',
         label: t('settings.model'),
@@ -174,32 +165,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaul
         label: t('settings.tools'),
         icon: <Toolkit theme='outline' size='20' fill={iconColors.secondary} />,
       },
-    ];
-
-    // 仅在桌面端添加 WebUI 选项（包含 Assistant 配置）/ Only add WebUI option on desktop (includes Assistant config)
-    if (isDesktop) {
-      items.push({
-        key: 'webui',
-        label: t('settings.webui'),
-        icon: <Earth theme='outline' size='20' fill={iconColors.secondary} />,
-      });
-    }
-
-    items.push(
       {
         key: 'system',
         label: t('settings.system'),
         icon: <Computer theme='outline' size='20' fill={iconColors.secondary} />,
       },
-      {
-        key: 'about',
-        label: t('settings.about'),
-        icon: <Info theme='outline' size='20' fill={iconColors.secondary} />,
-      }
-    );
+    ];
 
     return items;
-  }, [t, isDesktop]);
+  }, [t]);
 
   // 渲染当前选中的设置内容 / Render current selected settings content
   const renderContent = () => {

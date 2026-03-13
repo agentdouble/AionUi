@@ -576,7 +576,7 @@ const AcpSendBox: React.FC<{
         tools={
           <div className='flex items-center gap-4px'>
             <Button type='secondary' shape='circle' icon={<Plus theme='outline' size='14' strokeWidth={2} fill={iconColors.primary} />} onClick={openFileSelector} />
-            <AgentModeSelector backend={backend} conversationId={conversation_id} compact initialMode={sessionMode} />
+            {backend !== 'mia' && <AgentModeSelector backend={backend} conversationId={conversation_id} compact initialMode={sessionMode} />}
           </div>
         }
         prefix={
