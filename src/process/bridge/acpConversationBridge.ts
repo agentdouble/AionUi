@@ -45,7 +45,7 @@ export function initAcpConversationBridge(): void {
   // Enrich with MCP transport support info so the frontend can show accurate counts
   ipcBridge.acpConversation.getAvailableAgents.provider(() => {
     try {
-      const agents = acpDetector.getDetectedAgents();
+      const agents = acpDetector.getDetectedAgents().filter((agent) => agent.backend === 'mia' || agent.backend === 'custom');
       const enriched = agents.map((agent) => ({
         ...agent,
         supportedTransports: mcpService.getSupportedTransportsForAgent(agent),

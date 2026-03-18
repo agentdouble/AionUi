@@ -387,20 +387,44 @@ const initBuiltinAssistantRules = async (): Promise<void> => {
 
   const rulesDir = resolveBuiltinDir('rules');
   const builtinSkillsDir = resolveBuiltinDir('skills');
+  const builtinAutoSkillsDir = path.join(builtinSkillsDir, '_builtin');
   const userSkillsDir = getSkillsDir();
+  const userBuiltinSkillsDir = getBuiltinSkillsDir();
 
-  // 复制技能脚本目录到用户配置目录
-  // Copy skills scripts directory to user config directory
-  if (existsSync(builtinSkillsDir)) {
+  // 确保用户 skills 目录存在
+  // Ensure user skills directory exists
+  if (!existsSync(userSkillsDir)) {
+    mkdirSync(userSkillsDir);
+  }
+
+  // 同步内置 _builtin skills 到用户目录（自动注入）
+  // Sync builtin _builtin skills to user directory (auto-injected)
+  if (existsSync(builtinAutoSkillsDir)) {
     try {
-      // 确保用户技能目录存在
-      if (!existsSync(userSkillsDir)) {
-        mkdirSync(userSkillsDir);
+      if (!existsSync(userBuiltinSkillsDir)) {
+        mkdirSync(userBuiltinSkillsDir);
       }
-      // 复制内置技能到用户目录（不覆盖已存在的文件）
-      await copyDirectoryRecursively(builtinSkillsDir, userSkillsDir, { overwrite: false });
+
+      // 覆盖式同步，确保用户拿到最新内置版本
+      // Overwrite sync to ensure users always get latest builtin version
+      await copyDirectoryRecursively(builtinAutoSkillsDir, userBuiltinSkillsDir, { overwrite: true });
+
+      // 清理用户目录中已被移除的内置 skill
+      // Remove stale builtin skills that no longer exist in source
+      const sourceEntries = new Set(
+        readdirSync(builtinAutoSkillsDir, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name)
+      );
+      const userEntries = readdirSync(userBuiltinSkillsDir, { withFileTypes: true });
+      for (const entry of userEntries) {
+        if (!entry.isDirectory()) continue;
+        if (!sourceEntries.has(entry.name)) {
+          await fs.rm(path.join(userBuiltinSkillsDir, entry.name), { recursive: true, force: true });
+        }
+      }
     } catch (error) {
-      console.warn(`[AionUi] Failed to copy skills directory:`, error);
+      console.warn(`[AionUi] Failed to sync builtin skills directory:`, error);
     }
   }
 
@@ -510,6 +534,25 @@ const initBuiltinAssistantRules = async (): Promise<void> => {
       }
     }
   }
+
+  // 清理已移除内置助手的遗留规则/技能文件
+  // Clean up stale rule/skill files for removed builtin assistants
+  const validBuiltinAssistantIds = new Set(ASSISTANT_PRESETS.map((preset) => `builtin-${preset.id}`));
+  const staleBuiltinFilePattern = /^(builtin-[\w-]+?)(?:-skills)?\.[^.]+\.md$/;
+  try {
+    const files = readdirSync(assistantsDir);
+    for (const file of files) {
+      const match = file.match(staleBuiltinFilePattern);
+      if (!match) continue;
+      const assistantId = match[1];
+      if (!validBuiltinAssistantIds.has(assistantId)) {
+        const filePath = path.join(assistantsDir, file);
+        await fs.unlink(filePath);
+      }
+    }
+  } catch {
+    // 忽略删除失败 / Ignore deletion failure
+  }
 };
 
 /**
@@ -523,7 +566,7 @@ const getBuiltinAssistants = (): AcpBackendConfig[] => {
     // 从预设配置中读取默认启用的技能列表（不包含 cron，因为它是内置 skill，自动注入）
     // Read default enabled skills from preset config (excluding cron, which is builtin and auto-injected)
     const defaultEnabledSkills = preset.defaultEnabledSkills;
-    const enabledByDefault = preset.id === 'cowork' || preset.id === 'openclaw-setup' || preset.id === 'story-roleplay' || preset.id === 'moltbook' || preset.id === 'beautiful-mermaid';
+    const enabledByDefault = preset.id === 'cowork';
 
     assistants.push({
       id: `builtin-${preset.id}`,
@@ -619,6 +662,55 @@ const cleanupOrphanedHealthCheckConversations = () => {
   }
 };
 
+const normalizeLegacyCoworkLabel = (value?: string): string | undefined => {
+  if (!value) return value;
+  const normalized = value.replace(/[\s_-]+/g, '').toLowerCase();
+  if (normalized === 'foyercowork') {
+    return 'Cowork';
+  }
+  return value;
+};
+
+const renameLegacyFoyerCoworkAgents = (
+  agents: AcpBackendConfig[]
+): {
+  agents: AcpBackendConfig[];
+  changed: boolean;
+} => {
+  let changed = false;
+  const updated = agents.map((agent) => {
+    const normalizedName = normalizeLegacyCoworkLabel(agent.name);
+    let nameI18nChanged = false;
+    let normalizedNameI18n = agent.nameI18n;
+
+    if (agent.nameI18n) {
+      const nextNameI18n = { ...agent.nameI18n };
+      for (const [locale, label] of Object.entries(agent.nameI18n)) {
+        const normalizedLabel = normalizeLegacyCoworkLabel(label);
+        if (normalizedLabel !== label && normalizedLabel) {
+          nextNameI18n[locale] = normalizedLabel;
+          nameI18nChanged = true;
+        }
+      }
+      if (nameI18nChanged) {
+        normalizedNameI18n = nextNameI18n;
+      }
+    }
+
+    const shouldUpdate = normalizedName !== agent.name || nameI18nChanged;
+    if (!shouldUpdate) return agent;
+
+    changed = true;
+    return {
+      ...agent,
+      name: normalizedName || agent.name,
+      nameI18n: normalizedNameI18n,
+    };
+  });
+
+  return { agents: updated, changed };
+};
+
 const initStorage = async () => {
   console.log('[AionUi] Starting storage initialization...');
 
@@ -658,13 +750,15 @@ const initStorage = async () => {
     // 5.2 初始化助手配置（只包含元数据，不包含 context）
     // Initialize assistant config (metadata only, no context)
     const existingAgents = (await configFile.get('acp.customAgents').catch((): undefined => undefined)) || [];
+    const { agents: normalizedExistingAgents, changed: renamedLegacyCowork } = renameLegacyFoyerCoworkAgents(existingAgents);
     const builtinAssistants = getBuiltinAssistants();
+    const activeBuiltinIds = new Set(builtinAssistants.map((assistant) => assistant.id));
 
     // 5.2.1 检查是否需要迁移：修复老版本中所有助手都默认启用的问题
     // Check if migration needed: fix old version where all assistants were enabled by default
     const ASSISTANT_ENABLED_MIGRATION_KEY = 'migration.assistantEnabledFixed';
     const migrationDone = await configFile.get(ASSISTANT_ENABLED_MIGRATION_KEY).catch(() => false);
-    const needsMigration = !migrationDone && existingAgents.length > 0;
+    const needsMigration = !migrationDone && normalizedExistingAgents.length > 0;
 
     // 5.2.2 检查是否需要迁移：为内置助手添加默认启用的技能
     // Check if migration needed: add default enabled skills for builtin assistants
@@ -680,8 +774,11 @@ const initStorage = async () => {
 
     // 更新或添加内置助手配置
     // Update or add built-in assistant configurations
-    const updatedAgents = [...existingAgents];
-    let hasChanges = false;
+    const updatedAgents = normalizedExistingAgents.filter((agent: AcpBackendConfig) => !(agent.isBuiltin && !activeBuiltinIds.has(agent.id)));
+    let hasChanges = renamedLegacyCowork;
+    if (updatedAgents.length !== normalizedExistingAgents.length) {
+      hasChanges = true;
+    }
 
     for (const builtin of builtinAssistants) {
       const index = updatedAgents.findIndex((a: AcpBackendConfig) => a.id === builtin.id);
@@ -691,34 +788,38 @@ const initStorage = async () => {
         const existing = updatedAgents[index];
         // 只有当关键字段不同时才更新，避免不必要的写入
         // Update only if key fields are different to avoid unnecessary writes
-        // 注意：enabled 和 presetAgentType 字段由用户控制，不参与 shouldUpdate 判断
-        // Note: enabled and presetAgentType are user-controlled, not included in shouldUpdate check
         // 检查 promptsI18n 是否需要更新（如果不存在或已更改，或需要迁移）
         // Check if promptsI18n needs update (if missing, changed, or migration needed)
         const promptsI18nMissing = !existing.promptsI18n && builtin.promptsI18n;
         const promptsI18nChanged = existing.promptsI18n && builtin.promptsI18n && JSON.stringify(existing.promptsI18n) !== JSON.stringify(builtin.promptsI18n);
         const needsPromptsI18nUpdate = needsPromptsI18nMigration || promptsI18nMissing || promptsI18nChanged;
-        const shouldUpdate = existing.name !== builtin.name || existing.description !== builtin.description || existing.avatar !== builtin.avatar || existing.isPreset !== builtin.isPreset || existing.isBuiltin !== builtin.isBuiltin || needsPromptsI18nUpdate;
+        const presetAgentTypeChanged = existing.presetAgentType !== builtin.presetAgentType;
+        const shouldUpdate = existing.name !== builtin.name || existing.description !== builtin.description || existing.avatar !== builtin.avatar || existing.isPreset !== builtin.isPreset || existing.isBuiltin !== builtin.isBuiltin || presetAgentTypeChanged || needsPromptsI18nUpdate;
         // 当 enabled 是 undefined 或需要迁移时，设置默认值（Cowork 启用，其他禁用）
         // When enabled is undefined or migration needed, set default value (Cowork enabled, others disabled)
         const needsEnabledFix = existing.enabled === undefined || needsMigration;
         // 迁移时强制使用默认值，否则保留用户设置
         // Force default value during migration, otherwise preserve user setting
         const resolvedEnabled = needsEnabledFix ? builtin.enabled : existing.enabled;
-        // presetAgentType 由用户控制，未设置时使用内置默认值
-        // presetAgentType is user-controlled, use builtin default if not set
-        const resolvedPresetAgentType = existing.presetAgentType ?? builtin.presetAgentType;
+        // 内置助手主 Agent 强制跟随当前内置配置
+        // Built-in assistant main agent is always aligned with current preset configuration
+        const resolvedPresetAgentType = builtin.presetAgentType;
 
-        // 为有 defaultEnabledSkills 配置的内置助手添加默认技能（仅在迁移时且用户未设置 enabledSkills 时）
-        // Add default enabled skills for builtin assistants with defaultEnabledSkills (only during migration and if user hasn't set enabledSkills)
+        // 同步内置助手默认 skills：有默认值时按迁移补齐；无默认值时清理历史残留
+        // Sync builtin default skills: migrate defaults when configured; clear stale legacy values when not configured
+        const builtinEnabledSkills = builtin.enabledSkills && builtin.enabledSkills.length > 0 ? builtin.enabledSkills : undefined;
         let resolvedEnabledSkills = existing.enabledSkills;
-        const needsSkillsMigration = needsBuiltinSkillsMigration && builtin.enabledSkills && (!existing.enabledSkills || existing.enabledSkills.length === 0);
+        const needsSkillsMigration = needsBuiltinSkillsMigration && builtinEnabledSkills && (!existing.enabledSkills || existing.enabledSkills.length === 0);
+        const shouldResetEnabledSkills = !builtinEnabledSkills && Array.isArray(existing.enabledSkills) && existing.enabledSkills.length > 0;
         if (needsSkillsMigration) {
-          resolvedEnabledSkills = builtin.enabledSkills;
+          resolvedEnabledSkills = builtinEnabledSkills;
+        }
+        if (shouldResetEnabledSkills) {
+          resolvedEnabledSkills = undefined;
         }
 
-        if (shouldUpdate || needsEnabledFix || (needsSkillsMigration && resolvedEnabledSkills !== existing.enabledSkills) || needsPromptsI18nUpdate) {
-          // 保留用户已设置的 enabled 和 presetAgentType / Preserve user-set enabled and presetAgentType
+        if (shouldUpdate || needsEnabledFix || needsSkillsMigration || shouldResetEnabledSkills || needsPromptsI18nUpdate) {
+          // 保留用户已设置的 enabled，主 Agent 固定为内置配置 / Preserve user-set enabled, lock main agent to builtin config
           updatedAgents[index] = {
             ...existing,
             ...builtin,
