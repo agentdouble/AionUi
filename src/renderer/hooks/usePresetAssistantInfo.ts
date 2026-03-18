@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { ASSISTANT_PRESETS } from '@/common/presets/assistantPresets';
 import type { TChatConversation } from '@/common/storage';
 import { ConfigStorage } from '@/common/storage';
-import CoworkLogo from '@/renderer/assets/cowork.svg';
+import MiaLogo from '@/renderer/assets/logos/mia.svg';
 import useSWR from 'swr';
 
 export interface PresetAssistantInfo {
@@ -80,7 +80,7 @@ function buildPresetInfo(presetId: string, locale: string): PresetAssistantInfo 
   if (isEmoji) {
     logo = avatar || '🤖';
   } else if (preset.id === 'cowork') {
-    logo = CoworkLogo;
+    logo = MiaLogo;
   } else {
     // 其他 svg 需要动态导入，暂时使用 emoji fallback
     // Other svg need dynamic import, use emoji fallback for now
@@ -140,9 +140,9 @@ export function usePresetAssistantInfo(conversation: TChatConversation | undefin
         if (avatar) {
           if (avatar.endsWith('.svg')) {
             isEmoji = false;
-            // For cowork.svg, use the imported logo; for others, use emoji fallback
-            if (avatar === 'cowork.svg') {
-              logo = CoworkLogo;
+            // For cowork/mia avatar svg, use imported Mia logo; for others, use emoji fallback
+            if (avatar === 'cowork.svg' || avatar === 'mia.svg') {
+              logo = MiaLogo;
             } else {
               // Other svgs not yet supported, fallback to emoji
               logo = '🤖';

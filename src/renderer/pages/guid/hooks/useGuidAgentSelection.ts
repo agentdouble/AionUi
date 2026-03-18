@@ -14,6 +14,32 @@ import { getAgentModes } from '@/renderer/constants/agentModes';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 
+const normalizeAgentToken = (value?: string): string => (value || '').toLowerCase().replace(/[\s_-]+/g, '');
+
+const isCoworkAlias = (value?: string): boolean => {
+  const token = normalizeAgentToken(value);
+  return token === 'cowork' || token === 'foyercowork' || token === 'builtincowork';
+};
+
+const normalizeLegacyCoworkName = (value?: string): string | undefined => {
+  if (!value) return value;
+  return isCoworkAlias(value) && normalizeAgentToken(value) === 'foyercowork' ? 'Cowork' : value;
+};
+
+const normalizeLegacyCoworkNameI18n = (nameI18n?: Record<string, string>): Record<string, string> | undefined => {
+  if (!nameI18n) return nameI18n;
+  const next = { ...nameI18n };
+  let changed = false;
+  for (const [locale, label] of Object.entries(nameI18n)) {
+    const normalized = normalizeLegacyCoworkName(label);
+    if (normalized && normalized !== label) {
+      next[locale] = normalized;
+      changed = true;
+    }
+  }
+  return changed ? next : nameI18n;
+};
+
 /** Save preferred mode to the agent's own config key */
 async function savePreferredMode(agentKey: string, mode: string): Promise<void> {
   try {
@@ -175,15 +201,18 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
 
   // --- SWR: Fetch available agents ---
   const { data: availableAgentsData } = useSWR('acp.agents.available', async () => {
+    const fallbackMiaAgent: AvailableAgent = { backend: 'mia', name: 'Mia' };
     const result = await ipcBridge.acpConversation.getAvailableAgents.invoke();
     if (result.success) {
-      const miaAgent = result.data.find((agent) => agent.backend === 'mia');
-      if (miaAgent) {
-        return [{ ...miaAgent, name: 'mia' }];
-      }
-      return [{ backend: 'mia', name: 'mia' }];
+      const filteredAgents = result.data
+        .filter((agent) => agent.backend === 'mia' || agent.backend === 'custom')
+        .map((agent) => ({
+          ...agent,
+          name: normalizeLegacyCoworkName(agent.name) || agent.name,
+        }));
+      return filteredAgents.length > 0 ? filteredAgents : [fallbackMiaAgent];
     }
-    return [{ backend: 'mia', name: 'mia' }];
+    return [fallbackMiaAgent];
   });
 
   useEffect(() => {
@@ -192,35 +221,22 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     }
   }, [availableAgentsData]);
 
-  // Load last selected agent
+  // Always default to Cowork for new chats
   useEffect(() => {
     if (!availableAgents || availableAgents.length === 0) return;
 
-    let cancelled = false;
+    const coworkAgent = availableAgents.find((agent) => {
+      if (agent.backend !== 'custom') return false;
+      return isCoworkAlias(agent.customAgentId) || isCoworkAlias(agent.name);
+    });
+    const fallbackAgent = availableAgents.find((agent) => agent.backend === 'mia') || availableAgents[0];
+    const defaultAgent = coworkAgent || fallbackAgent;
+    const defaultAgentKey = defaultAgent.backend === 'custom' && defaultAgent.customAgentId ? `custom:${defaultAgent.customAgentId}` : defaultAgent.backend;
 
-    const loadLastSelectedAgent = async () => {
-      try {
-        const savedAgentKey = await ConfigStorage.get('guid.lastSelectedAgent');
-        if (cancelled || !savedAgentKey) return;
-
-        const isInAvailable = availableAgents.some((agent) => {
-          const key = agent.backend === 'custom' && agent.customAgentId ? `custom:${agent.customAgentId}` : agent.backend;
-          return key === savedAgentKey;
-        });
-
-        if (isInAvailable) {
-          _setSelectedAgentKey(savedAgentKey);
-        }
-      } catch (error) {
-        console.error('Failed to load last selected agent:', error);
-      }
-    };
-
-    void loadLastSelectedAgent();
-
-    return () => {
-      cancelled = true;
-    };
+    _setSelectedAgentKey(defaultAgentKey);
+    ConfigStorage.set('guid.lastSelectedAgent', defaultAgentKey).catch((error) => {
+      console.error('Failed to save selected agent:', error);
+    });
   }, [availableAgents]);
 
   // Load custom agents
@@ -229,7 +245,13 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     ConfigStorage.get('acp.customAgents')
       .then((agents) => {
         if (!isActive) return;
-        const list = (agents || []).filter((agent: AcpBackendConfig) => availableCustomAgentIds.has(agent.id));
+        const list = (agents || [])
+          .filter((agent: AcpBackendConfig) => availableCustomAgentIds.has(agent.id))
+          .map((agent: AcpBackendConfig) => ({
+            ...agent,
+            name: normalizeLegacyCoworkName(agent.name) || agent.name,
+            nameI18n: normalizeLegacyCoworkNameI18n(agent.nameI18n),
+          }));
         setCustomAgents(list);
       })
       .catch((error) => {
@@ -466,10 +488,10 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
 
   const resolvePresetAgentType = useCallback(
     (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => {
-      if (!agentInfo) return 'gemini' as PresetAgentType;
+      if (!agentInfo) return 'mia' as PresetAgentType;
       if (agentInfo.backend !== 'custom') return agentInfo.backend as PresetAgentType;
       const customAgent = customAgents.find((agent) => agent.id === agentInfo.customAgentId);
-      return customAgent?.presetAgentType || ('gemini' as PresetAgentType);
+      return customAgent?.presetAgentType || ('mia' as PresetAgentType);
     },
     [customAgents]
   );
@@ -496,7 +518,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
   );
 
   const getAvailableFallbackAgent = useCallback((): PresetAgentType | null => {
-    const fallbackOrder: PresetAgentType[] = ['gemini', 'claude', 'qwen', 'codex', 'codebuddy', 'opencode', 'mia'];
+    const fallbackOrder: PresetAgentType[] = ['mia'];
     for (const agentType of fallbackOrder) {
       if (isMainAgentAvailable(agentType)) {
         return agentType;

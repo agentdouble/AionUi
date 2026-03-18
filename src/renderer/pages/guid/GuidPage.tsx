@@ -22,7 +22,7 @@ import { useGuidModelSelection } from './hooks/useGuidModelSelection';
 import { useGuidSend } from './hooks/useGuidSend';
 import { useTypewriterPlaceholder } from './hooks/useTypewriterPlaceholder';
 import { ConfigProvider } from '@arco-design/web-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import styles from './index.module.css';
@@ -218,11 +218,19 @@ const GuidPage: React.FC = () => {
   // Determine if model selector should be in Gemini mode
   const isGeminiMode = (agentSelection.selectedAgent === 'gemini' && !agentSelection.isPresetAgent) || (agentSelection.isPresetAgent && agentSelection.currentEffectiveAgentInfo.agentType === 'gemini' && agentSelection.currentEffectiveAgentInfo.isAvailable);
 
+  const hideModelSelectorForCowork = useMemo(() => {
+    const info = agentSelection.selectedAgentInfo;
+    if (!info || info.backend !== 'custom') return false;
+    const normalize = (value?: string) => (value || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const aliases = new Set(['cowork', 'foyercowork', 'builtincowork']);
+    return aliases.has(normalize(info.customAgentId)) || aliases.has(normalize(info.name));
+  }, [agentSelection.selectedAgentInfo]);
+
   // Build the mention dropdown node
   const mentionDropdownNode = <MentionDropdown menuRef={mention.mentionMenuRef} options={mention.filteredMentionOptions} selectedKey={mention.mentionMenuSelectedKey} onSelect={mention.selectMentionAgent} />;
 
   // Build the model selector node
-  const modelSelectorNode = agentSelection.selectedAgent === 'mia' ? null : <GuidModelSelector isGeminiMode={isGeminiMode} modelList={modelSelection.modelList} currentModel={modelSelection.currentModel} setCurrentModel={modelSelection.setCurrentModel} geminiModeLookup={modelSelection.geminiModeLookup} formatGeminiModelLabel={modelSelection.formatGeminiModelLabel} currentAcpCachedModelInfo={agentSelection.currentAcpCachedModelInfo} selectedAcpModel={agentSelection.selectedAcpModel} setSelectedAcpModel={agentSelection.setSelectedAcpModel} />;
+  const modelSelectorNode = agentSelection.selectedAgent === 'mia' || hideModelSelectorForCowork ? null : <GuidModelSelector isGeminiMode={isGeminiMode} modelList={modelSelection.modelList} currentModel={modelSelection.currentModel} setCurrentModel={modelSelection.setCurrentModel} geminiModeLookup={modelSelection.geminiModeLookup} formatGeminiModelLabel={modelSelection.formatGeminiModelLabel} currentAcpCachedModelInfo={agentSelection.currentAcpCachedModelInfo} selectedAcpModel={agentSelection.selectedAcpModel} setSelectedAcpModel={agentSelection.setSelectedAcpModel} />;
 
   // Build the action row
   const actionRowNode = (

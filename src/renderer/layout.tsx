@@ -8,7 +8,7 @@ import { ipcBridge } from '@/common';
 import { ConfigStorage, type ICssTheme } from '@/common/storage';
 import PwaPullToRefresh from '@/renderer/components/PwaPullToRefresh';
 import Titlebar from '@/renderer/components/Titlebar';
-import AppLogo from '@/renderer/assets/logos/app.png';
+import MiaLogo from '@/renderer/assets/logos/mia.svg';
 import { Layout as ArcoLayout } from '@arco-design/web-react';
 import { MenuFold, MenuUnfold } from '@icon-park/react';
 import classNames from 'classnames';
@@ -287,7 +287,7 @@ const Layout: React.FC<{
               })}
             >
               <div className='flex items-center gap-12px flex-1 collapsed-hidden' onClick={onClick}>
-                <img src={AppLogo} alt='Cowork logo' className='size-40px object-contain rd-12px' />
+                <img src={MiaLogo} alt='Cowork logo' className='size-40px object-contain rd-12px' />
                 <div className='text-20px text-1 font-bold'>Cowork</div>
               </div>
               {isMobile && !collapsed && (

@@ -70,8 +70,9 @@ async function findBuiltinResourceDir(resourceType: ResourceType): Promise<strin
  * 获取用户配置 skills 目录
  */
 function getUserSkillsDir(): string {
-  const userDataPath = app.getPath('userData');
-  return path.join(userDataPath, 'config', 'skills');
+  // Keep this aligned with initStorage cacheDir (supports custom cache path)
+  // 与 initStorage 的 cacheDir 保持一致（支持自定义缓存路径）
+  return path.join(getSystemDir().cacheDir, 'skills');
 }
 
 /**
@@ -92,6 +93,26 @@ async function copyDirectory(src: string, dest: string) {
       await fs.copyFile(srcPath, destPath);
     }
   }
+}
+
+function stripWrappingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function parseSkillMetadata(content: string, fallbackName: string): { name: string; description: string } {
+  const frontMatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  const yaml = frontMatterMatch?.[1] || '';
+  const nameMatch = yaml.match(/^name:\s*(.+)$/m);
+  const descMatch = yaml.match(/^description:\s*['"]?(.+?)['"]?$/m);
+  const rawName = nameMatch?.[1] || fallbackName;
+  return {
+    name: stripWrappingQuotes(rawName),
+    description: descMatch ? stripWrappingQuotes(descMatch[1]) : '',
+  };
 }
 
 /**
@@ -755,13 +776,14 @@ export function initFsBridge(): void {
     return deleteAssistantResource('skills', new RegExp(`^${assistantId}-skills\\..*\\.md$`));
   });
 
-  // 获取可用 skills 列表 / List available skills from both builtin and user directories
+  // 获取可用 skills 列表 / List available skills from builtin + user directories
   ipcBridge.fs.listAvailableSkills.provider(async () => {
     try {
-      const skills: Array<{ name: string; description: string; location: string; isCustom: boolean }> = [];
+      const skillMap = new Map<string, { name: string; description: string; location: string; isCustom: boolean }>();
 
       // 辅助函数：从目录读取 skills
-      const readSkillsFromDir = async (skillsDir: string, isCustomDir: boolean) => {
+      const readSkillsFromDir = async (skillsDir: string, isCustomDir: boolean, options?: { skipBuiltinFolder?: boolean }) => {
+        let addedCount = 0;
         try {
           await fs.access(skillsDir);
           const entries = await fs.readdir(skillsDir, { withFileTypes: true });
@@ -769,29 +791,27 @@ export function initFsBridge(): void {
           for (const entry of entries) {
             if (!entry.isDirectory()) continue;
 
-            // 跳过内置 skills 目录（_builtin），这些 skills 自动注入，不需要用户选择
-            // Skip builtin skills directory (_builtin), these are auto-injected, no user selection needed
-            if (entry.name === '_builtin') continue;
+            // 在扫描用户根目录时跳过 _builtin（它会单独按 builtin 分类读取）
+            // Skip _builtin when scanning user root (it is loaded separately as builtin)
+            if (options?.skipBuiltinFolder && entry.name === '_builtin') continue;
 
             const skillMdPath = path.join(skillsDir, entry.name, 'SKILL.md');
 
             try {
               const content = await fs.readFile(skillMdPath, 'utf-8');
-              // 解析 YAML front matter
-              const frontMatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-              if (frontMatterMatch) {
-                const yaml = frontMatterMatch[1];
-                const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-                const descMatch = yaml.match(/^description:\s*['"]?(.+?)['"]?$/m);
-                if (nameMatch) {
-                  skills.push({
-                    name: nameMatch[1].trim(),
-                    description: descMatch ? descMatch[1].trim() : '',
-                    location: skillMdPath,
-                    isCustom: isCustomDir,
-                  });
-                }
-              }
+              const { name: skillName, description } = parseSkillMetadata(content, entry.name);
+              const existing = skillMap.get(skillName);
+              // Prefer builtin over custom when name collides
+              // 名称冲突时优先保留 builtin
+              if (existing && !existing.isCustom) continue;
+
+              skillMap.set(skillName, {
+                name: skillName,
+                description,
+                location: skillMdPath,
+                isCustom: isCustomDir,
+              });
+              addedCount += 1;
             } catch {
               // Skill directory without SKILL.md, skip
             }
@@ -799,39 +819,38 @@ export function initFsBridge(): void {
         } catch {
           // Directory doesn't exist, skip
         }
+
+        return addedCount;
       };
 
-      // 读取内置 skills (isCustom: false)
-      const builtinSkillsDir = await findBuiltinResourceDir('skills');
-      const builtinCountBefore = skills.length;
-      await readSkillsFromDir(builtinSkillsDir, false);
-      const builtinCount = skills.length - builtinCountBefore;
-
-      // 读取用户自定义 skills (isCustom: true)
+      // 读取内置自动技能：优先用户目录 _builtin（由 initStorage 同步）
+      // Read builtin auto skills: prefer user _builtin directory (synced by initStorage)
       const userSkillsDir = getUserSkillsDir();
-      const userCountBefore = skills.length;
-      await readSkillsFromDir(userSkillsDir, true);
-      const userCount = skills.length - userCountBefore;
+      const userBuiltinSkillsDir = path.join(userSkillsDir, '_builtin');
+      let builtinCount = await readSkillsFromDir(userBuiltinSkillsDir, false);
+      let builtinSource = userBuiltinSkillsDir;
 
-      // 去重：如果 custom skill 和 builtin skill 同名，只保留 builtin
-      // Deduplicate: if custom and builtin skills have same name, keep only builtin
-      const skillMap = new Map<string, { name: string; description: string; location: string; isCustom: boolean }>();
-      for (const skill of skills) {
-        const existing = skillMap.get(skill.name);
-        // 如果已存在且当前是 builtin，或者不存在，则添加/更新
-        // Add/update if: already exists and current is builtin, or doesn't exist yet
-        if (!existing || !skill.isCustom) {
-          skillMap.set(skill.name, skill);
+      // 回退到打包资源目录（在同步前或目录异常时）
+      // Fallback to bundled resources (before sync or if user dir is unavailable)
+      if (builtinCount === 0) {
+        const bundledBuiltinSkillsDir = path.join(await findBuiltinResourceDir('skills'), '_builtin');
+        builtinCount = await readSkillsFromDir(bundledBuiltinSkillsDir, false);
+        if (builtinCount > 0) {
+          builtinSource = bundledBuiltinSkillsDir;
         }
       }
-      const deduplicatedSkills = Array.from(skillMap.values());
 
-      console.log(`[fsBridge] Listed ${deduplicatedSkills.length} available skills (${skills.length} before deduplication):`);
-      console.log(`  - Builtin skills (${builtinCount}): ${builtinSkillsDir}`);
-      console.log(`  - User skills (${userCount}): ${userSkillsDir}`);
-      console.log(`  - Skills breakdown:`, deduplicatedSkills.map((s) => `${s.name} (${s.isCustom ? 'custom' : 'builtin'})`).join(', '));
+      // 读取用户自定义 skills（跳过 _builtin 子目录）
+      // Read user custom skills (skip _builtin subdirectory)
+      const customCount = await readSkillsFromDir(userSkillsDir, true, { skipBuiltinFolder: true });
 
-      return deduplicatedSkills;
+      const skills = Array.from(skillMap.values());
+      console.log(`[fsBridge] Listed ${skills.length} available skills:`);
+      console.log(`  - Builtin skills (${builtinCount}): ${builtinSource}`);
+      console.log(`  - User skills (${customCount}): ${userSkillsDir}`);
+      console.log(`  - Skills breakdown:`, skills.map((s) => `${s.name} (${s.isCustom ? 'custom' : 'builtin'})`).join(', '));
+
+      return skills;
     } catch (error) {
       console.error('[fsBridge] Failed to list available skills:', error);
       return [];
@@ -854,21 +873,7 @@ export function initFsBridge(): void {
 
       // 读取 SKILL.md 获取 skill 信息 / Read SKILL.md to get skill info
       const content = await fs.readFile(skillMdPath, 'utf-8');
-      const frontMatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-      let skillName = path.basename(skillPath); // 默认使用目录名 / Default to directory name
-      let skillDescription = '';
-
-      if (frontMatterMatch) {
-        const yaml = frontMatterMatch[1];
-        const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-        const descMatch = yaml.match(/^description:\s*['"]?(.+?)['"]?$/m);
-        if (nameMatch) {
-          skillName = nameMatch[1].trim();
-        }
-        if (descMatch) {
-          skillDescription = descMatch[1].trim();
-        }
-      }
+      const { name: skillName, description: skillDescription } = parseSkillMetadata(content, path.basename(skillPath));
 
       return {
         success: true,
@@ -903,25 +908,15 @@ export function initFsBridge(): void {
 
       // 读取 SKILL.md 获取 skill 名称 / Read SKILL.md to get skill name
       const content = await fs.readFile(skillMdPath, 'utf-8');
-      const frontMatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-      let skillName = path.basename(skillPath); // 默认使用目录名 / Default to directory name
-
-      if (frontMatterMatch) {
-        const yaml = frontMatterMatch[1];
-        const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-        if (nameMatch) {
-          skillName = nameMatch[1].trim();
-        }
-      }
+      const { name: parsedSkillName } = parseSkillMetadata(content, path.basename(skillPath));
+      const skillName = parsedSkillName || path.basename(skillPath);
 
       // 获取用户 skills 目录 / Get user skills directory
       const userSkillsDir = getUserSkillsDir();
       const targetDir = path.join(userSkillsDir, skillName);
 
-      // 检查是否已存在同名 skill（同时检查内置和用户目录）/ Check if skill already exists in both builtin and user directories
-      const builtinSkillsDir = await findBuiltinResourceDir('skills');
-      const builtinTargetDir = path.join(builtinSkillsDir, skillName);
-
+      // 检查是否已存在同名 skill（用户目录）
+      // Check if skill already exists in user directory
       try {
         await fs.access(targetDir);
         return {
@@ -930,16 +925,6 @@ export function initFsBridge(): void {
         };
       } catch {
         // User skill doesn't exist
-      }
-
-      try {
-        await fs.access(builtinTargetDir);
-        return {
-          success: false,
-          msg: `Skill "${skillName}" already exists in builtin skills`,
-        };
-      } catch {
-        // Builtin skill doesn't exist, proceed with copy
       }
 
       // 复制整个目录 / Copy entire directory
@@ -979,21 +964,13 @@ export function initFsBridge(): void {
 
         try {
           const content = await fs.readFile(skillMdPath, 'utf-8');
-          // 解析 YAML front matter
-          const frontMatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-          if (frontMatterMatch) {
-            const yaml = frontMatterMatch[1];
-            const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-            const descMatch = yaml.match(/^description:\s*['"]?(.+?)['"]?$/m);
-            if (nameMatch) {
-              skills.push({
-                name: nameMatch[1].trim(),
-                description: descMatch ? descMatch[1].trim() : '',
-                path: skillDir,
-              });
-              console.log(`[fsBridge] Found skill in subdirectory: ${nameMatch[1].trim()}`);
-            }
-          }
+          const metadata = parseSkillMetadata(content, entry.name);
+          skills.push({
+            name: metadata.name,
+            description: metadata.description,
+            path: skillDir,
+          });
+          console.log(`[fsBridge] Found skill in subdirectory: ${metadata.name}`);
         } catch {
           // Skill directory without SKILL.md, skip
         }
@@ -1005,20 +982,13 @@ export function initFsBridge(): void {
         const skillMdPath = path.join(folderPath, 'SKILL.md');
         try {
           const content = await fs.readFile(skillMdPath, 'utf-8');
-          const frontMatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-          if (frontMatterMatch) {
-            const yaml = frontMatterMatch[1];
-            const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-            const descMatch = yaml.match(/^description:\s*['"]?(.+?)['"]?$/m);
-            if (nameMatch) {
-              skills.push({
-                name: nameMatch[1].trim(),
-                description: descMatch ? descMatch[1].trim() : '',
-                path: folderPath,
-              });
-              console.log(`[fsBridge] Found skill in the folder itself: ${nameMatch[1].trim()}`);
-            }
-          }
+          const metadata = parseSkillMetadata(content, path.basename(folderPath));
+          skills.push({
+            name: metadata.name,
+            description: metadata.description,
+            path: folderPath,
+          });
+          console.log(`[fsBridge] Found skill in the folder itself: ${metadata.name}`);
         } catch {
           // Not a skill directory
         }

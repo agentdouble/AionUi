@@ -2,12 +2,12 @@ import { ipcBridge } from '@/common';
 import { ASSISTANT_PRESETS } from '@/common/presets/assistantPresets';
 import { ConfigStorage } from '@/common/storage';
 import { resolveLocaleKey } from '@/common/utils';
-import coworkSvg from '@/renderer/assets/cowork.svg';
+import miaSvg from '@/renderer/assets/logos/mia.svg';
 import EmojiPicker from '@/renderer/components/EmojiPicker';
 import MarkdownView from '@/renderer/components/Markdown';
-import type { AcpBackendConfig, PresetAgentType } from '@/types/acpTypes';
+import type { AcpBackendConfig } from '@/types/acpTypes';
 import type { Message } from '@arco-design/web-react';
-import { Avatar, Button, Checkbox, Collapse, Drawer, Input, Modal, Select, Switch, Typography } from '@arco-design/web-react';
+import { Avatar, Button, Checkbox, Collapse, Drawer, Input, Modal, Switch, Typography } from '@arco-design/web-react';
 import { Close, Delete, FolderOpen, Plus, Robot, SettingOne } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -54,7 +54,6 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
   const [editDescription, setEditDescription] = useState('');
   const [editContext, setEditContext] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
-  const [editAgent, setEditAgent] = useState<PresetAgentType>('gemini');
   const [editSkills, setEditSkills] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
@@ -67,15 +66,15 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
   const [skillsModalVisible, setSkillsModalVisible] = useState(false);
   const [skillPath, setSkillPath] = useState(''); // Skill folder path input
   const [commonPaths, setCommonPaths] = useState<Array<{ name: string; path: string }>>([]); // Common skill paths detected
-  const [availableBackends, setAvailableBackends] = useState<Set<string>>(new Set(['gemini']));
   const [pendingSkills, setPendingSkills] = useState<PendingSkill[]>([]); // 待导入的 skills / Pending skills to import
   const [deletePendingSkillName, setDeletePendingSkillName] = useState<string | null>(null); // 待删除的 pending skill 名称 / Pending skill name to delete
   const [deleteCustomSkillName, setDeleteCustomSkillName] = useState<string | null>(null); // 待从助手移除的 custom skill 名称 / Custom skill to remove from assistant
   const textareaWrapperRef = useRef<HTMLDivElement>(null);
   const localeKey = resolveLocaleKey(i18n.language);
   const avatarImageMap: Record<string, string> = {
-    'cowork.svg': coworkSvg,
-    '🛠️': coworkSvg,
+    'cowork.svg': miaSvg,
+    'mia.svg': miaSvg,
+    '🛠️': miaSvg,
   };
 
   // Auto focus textarea when drawer opens
@@ -100,20 +99,6 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     updateDrawerWidth();
     window.addEventListener('resize', updateDrawerWidth);
     return () => window.removeEventListener('resize', updateDrawerWidth);
-  }, []);
-
-  // Load available agent backends from ACP detector
-  useEffect(() => {
-    void (async () => {
-      try {
-        const resp = await ipcBridge.acpConversation.getAvailableAgents.invoke();
-        if (resp.success && resp.data) {
-          setAvailableBackends(new Set(resp.data.map((a) => a.backend)));
-        }
-      } catch {
-        // fallback to default
-      }
-    })();
   }, []);
 
   // Detect common skill paths when modal opens
@@ -240,7 +225,6 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditName(assistant.name || '');
     setEditDescription(assistant.description || '');
     setEditAvatar(assistant.avatar || '');
-    setEditAgent(assistant.presetAgentType || 'gemini');
     setEditVisible(true);
 
     // 先加载规则、技能内容 / Load rules, skills content
@@ -279,7 +263,6 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditDescription('');
     setEditContext('');
     setEditAvatar('🤖');
-    setEditAgent('gemini');
     setEditSkills('');
     setSelectedSkills([]); // 没有启用的 skills
     setCustomSkills([]); // 没有通过 Add Skills 添加的 skills
@@ -303,7 +286,6 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditName(`${assistant.nameI18n?.[localeKey] || assistant.name} (Copy)`);
     setEditDescription(assistant.descriptionI18n?.[localeKey] || assistant.description || '');
     setEditAvatar(assistant.avatar || '🤖');
-    setEditAgent(assistant.presetAgentType || 'gemini');
     setPromptViewMode('edit');
     setEditVisible(true);
 
@@ -362,7 +344,11 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
 
       // 计算最终的 customSkills：合并现有的 + 待导入的 / Calculate final customSkills: merge existing + pending
       const pendingSkillNames = pendingSkills.map((s) => s.name);
-      const finalCustomSkills = Array.from(new Set([...customSkills, ...pendingSkillNames]));
+      const pendingSkillNameSet = new Set(pendingSkillNames);
+      const availableCustomSkillNameSet = new Set(availableSkills.filter((skill) => skill.isCustom).map((skill) => skill.name));
+      // customSkillNames should only track custom/imported skills, never builtin ones
+      // customSkillNames 只跟踪自定义/导入 skills，不包含 builtin
+      const finalCustomSkills = Array.from(new Set([...customSkills, ...pendingSkillNames])).filter((name) => pendingSkillNameSet.has(name) || availableCustomSkillNameSet.has(name));
 
       if (isCreating) {
         // 创建新助手 / Create new assistant
@@ -374,7 +360,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
           avatar: editAvatar,
           isPreset: true,
           isBuiltin: false,
-          presetAgentType: editAgent,
+          presetAgentType: 'mia',
           enabled: true,
           enabledSkills: selectedSkills,
           customSkillNames: finalCustomSkills,
@@ -403,7 +389,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
           name: editName,
           description: editDescription,
           avatar: editAvatar,
-          presetAgentType: editAgent,
+          presetAgentType: 'mia',
           enabledSkills: selectedSkills,
           customSkillNames: finalCustomSkills,
         };
@@ -645,22 +631,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
             </div>
             <div className='flex-shrink-0'>
               <Typography.Text bold>{t('settings.assistantMainAgent', { defaultValue: 'Main Agent' })}</Typography.Text>
-              <Select className='mt-10px w-full rounded-4px' value={editAgent} onChange={(value) => setEditAgent(value as PresetAgentType)}>
-                {[
-                  { value: 'gemini', label: 'Gemini CLI' },
-                  { value: 'claude', label: 'Claude Code' },
-                  { value: 'qwen', label: 'Qwen Code' },
-                  { value: 'codex', label: 'Codex' },
-                  { value: 'codebuddy', label: 'CodeBuddy' },
-                  { value: 'opencode', label: 'OpenCode' },
-                ]
-                  .filter((opt) => availableBackends.has(opt.value))
-                  .map((opt) => (
-                    <Select.Option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </Select.Option>
-                  ))}
-              </Select>
+              <Input className='mt-10px rounded-4px bg-bg-1' value='Mia' disabled />
             </div>
             <div className='flex-shrink-0'>
               <Typography.Text bold className='flex-shrink-0'>
@@ -860,7 +831,22 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
               }
             }
 
-            if (allFoundSkills.length > 0) {
+            // 按 skill 名称去重，避免同一路径被重复扫描造成误判
+            // De-duplicate by skill name to avoid false duplicates from repeated scans
+            const uniqueSkillsMap = new Map<string, { name: string; description: string; path: string }>();
+            for (const skill of allFoundSkills) {
+              const normalizedName = skill.name.trim();
+              if (!normalizedName) continue;
+              if (!uniqueSkillsMap.has(normalizedName)) {
+                uniqueSkillsMap.set(normalizedName, {
+                  ...skill,
+                  name: normalizedName,
+                });
+              }
+            }
+            const uniqueFoundSkills = Array.from(uniqueSkillsMap.values());
+
+            if (uniqueFoundSkills.length > 0) {
               const newPendingSkills: PendingSkill[] = [];
               const newCustomSkillNames: string[] = [];
               const newSelectedSkills: string[] = [];
@@ -868,35 +854,57 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
               let addedCount = 0;
               let skippedCount = 0;
 
-              for (const skill of allFoundSkills) {
+              for (const skill of uniqueFoundSkills) {
                 const { name, description, path: sPath } = skill;
 
-                // 检查是否已经在此助手的列表中 / Check if already in this assistant's list
-                const alreadyInAssistant = customSkills.includes(name) || newCustomSkillNames.includes(name);
-
-                if (alreadyInAssistant) {
-                  skippedCount++;
-                  continue;
-                }
-
                 // 检查是否系统已存在 / Check if already exists in system
-                const existsInAvailable = availableSkills.some((s) => s.name === name);
-                const existsInPending = pendingSkills.some((s) => s.name === name);
+                const existingSkill = availableSkills.find((s) => s.name === name);
+                const existsInAvailable = Boolean(existingSkill);
+                const existsInPending = pendingSkills.some((s) => s.name === name) || newPendingSkills.some((s) => s.name === name);
+                const alreadySelected = selectedSkills.includes(name) || newSelectedSkills.includes(name);
+                const alreadyLinkedCustom = customSkills.includes(name) || newCustomSkillNames.includes(name);
 
-                if (!existsInAvailable && !existsInPending) {
-                  // 只有系统不存在时才添加到待导入列表 / Only add to pending if not in system
-                  newPendingSkills.push({ path: sPath, name, description });
+                let changed = false;
+
+                // Always allow selecting discovered skills for this assistant
+                // 发现到 skill 时，总是允许直接选中到当前 assistant
+                if (!alreadySelected) {
+                  newSelectedSkills.push(name);
+                  changed = true;
                 }
 
-                newCustomSkillNames.push(name);
-                newSelectedSkills.push(name);
-                addedCount++;
+                // New external skill: import later and mark as custom for this assistant
+                // 外部新 skill：加入待导入并标记为 assistant 自定义 skill
+                if (!existsInAvailable && !existsInPending) {
+                  newPendingSkills.push({ path: sPath, name, description });
+                  if (!alreadyLinkedCustom) {
+                    newCustomSkillNames.push(name);
+                  }
+                  changed = true;
+                } else if (existingSkill?.isCustom && !alreadyLinkedCustom) {
+                  // Existing custom library skill: link to this assistant
+                  // 已存在的自定义库 skill：关联到当前 assistant
+                  newCustomSkillNames.push(name);
+                  changed = true;
+                }
+
+                if (changed) {
+                  addedCount++;
+                } else {
+                  skippedCount++;
+                }
               }
 
               if (addedCount > 0) {
-                setPendingSkills([...pendingSkills, ...newPendingSkills]);
-                setCustomSkills([...customSkills, ...newCustomSkillNames]);
-                setSelectedSkills([...selectedSkills, ...newSelectedSkills]);
+                if (newPendingSkills.length > 0) {
+                  setPendingSkills([...pendingSkills, ...newPendingSkills]);
+                }
+                if (newCustomSkillNames.length > 0) {
+                  setCustomSkills(Array.from(new Set([...customSkills, ...newCustomSkillNames])));
+                }
+                if (newSelectedSkills.length > 0) {
+                  setSelectedSkills(Array.from(new Set([...selectedSkills, ...newSelectedSkills])));
+                }
                 const skippedCountText = skippedCount > 0 ? ` (${t('settings.skippedCount', { count: skippedCount, defaultValue: `${skippedCount} skipped` })})` : '';
                 message.success(t('settings.skillsAdded', { addedCount, skippedCountText, defaultValue: `${addedCount} skills added and selected${skippedCountText}` }));
               } else if (skippedCount > 0) {
