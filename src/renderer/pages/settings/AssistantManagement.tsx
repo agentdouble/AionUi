@@ -1,6 +1,7 @@
 import { ipcBridge } from '@/common';
 import { ASSISTANT_PRESETS } from '@/common/presets/assistantPresets';
 import { ConfigStorage } from '@/common/storage';
+import type { IMcpServer } from '@/common/storage';
 import { resolveLocaleKey } from '@/common/utils';
 import miaSvg from '@/renderer/assets/logos/mia.svg';
 import EmojiPicker from '@/renderer/components/EmojiPicker';
@@ -11,6 +12,7 @@ import { Avatar, Button, Checkbox, Collapse, Drawer, Input, Modal, Switch, Typog
 import { Close, Delete, FolderOpen, Plus, Robot, SettingOne } from '@icon-park/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { mutate } from 'swr';
 
 // Skill 信息类型 / Skill info type
@@ -69,12 +71,21 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
   const [pendingSkills, setPendingSkills] = useState<PendingSkill[]>([]); // 待导入的 skills / Pending skills to import
   const [deletePendingSkillName, setDeletePendingSkillName] = useState<string | null>(null); // 待删除的 pending skill 名称 / Pending skill name to delete
   const [deleteCustomSkillName, setDeleteCustomSkillName] = useState<string | null>(null); // 待从助手移除的 custom skill 名称 / Custom skill to remove from assistant
+  // MCP Servers 相关 state / MCP Servers related states
+  const [availableMcpServers, setAvailableMcpServers] = useState<IMcpServer[]>([]); // 所有配置的 MCP servers
+  const [selectedMcpServers, setSelectedMcpServers] = useState<string[]>([]); // 选中的 MCP servers
   const textareaWrapperRef = useRef<HTMLDivElement>(null);
   const localeKey = resolveLocaleKey(i18n.language);
   const avatarImageMap: Record<string, string> = {
     'cowork.svg': miaSvg,
     'mia.svg': miaSvg,
     '🛠️': miaSvg,
+  };
+  const navigate = useNavigate();
+
+  const handleOpenToolsTab = () => {
+    setEditVisible(false);
+    void navigate('/settings/tools');
   };
 
   // Auto focus textarea when drawer opens
@@ -229,9 +240,13 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
 
     // 先加载规则、技能内容 / Load rules, skills content
     try {
-      const [context, skills] = await Promise.all([loadAssistantContext(assistant.id), loadAssistantSkills(assistant.id)]);
+      const [context, skills, mcpConfig] = await Promise.all([loadAssistantContext(assistant.id), loadAssistantSkills(assistant.id), ConfigStorage.get('mcp.config')]);
       setEditContext(context);
       setEditSkills(skills);
+
+      // 加载 MCP servers / Load MCP servers
+      setAvailableMcpServers((mcpConfig as IMcpServer[]) || []);
+      setSelectedMcpServers(assistant.enabledMcpServers || []);
 
       // 对于有 skillFiles 配置的内置助手和所有自定义助手，加载技能列表 / Load skills list for builtin assistants with skillFiles and all custom assistants
       if (hasBuiltinSkills(assistant.id) || !assistant.isBuiltin) {
@@ -252,6 +267,8 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
       setEditSkills('');
       setAvailableSkills([]);
       setSelectedSkills([]);
+      setAvailableMcpServers([]);
+      setSelectedMcpServers([]);
     }
   };
 
@@ -266,16 +283,19 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
     setEditSkills('');
     setSelectedSkills([]); // 没有启用的 skills
     setCustomSkills([]); // 没有通过 Add Skills 添加的 skills
+    setSelectedMcpServers([]); // 没有选中的 MCP servers
     setPromptViewMode('edit'); // 创建助手时，规则默认处于编辑状态 / Default to edit mode when creating
     setEditVisible(true);
 
-    // 加载可用的skills列表 / Load available skills list
+    // 加载可用的skills列表和MCP servers / Load available skills list and MCP servers
     try {
-      const skillsList = await ipcBridge.fs.listAvailableSkills.invoke();
+      const [skillsList, mcpConfig] = await Promise.all([ipcBridge.fs.listAvailableSkills.invoke(), ConfigStorage.get('mcp.config')]);
       setAvailableSkills(skillsList);
+      setAvailableMcpServers((mcpConfig as IMcpServer[]) || []);
     } catch (error) {
-      console.error('Failed to load skills:', error);
+      console.error('Failed to load skills or MCP servers:', error);
       setAvailableSkills([]);
+      setAvailableMcpServers([]);
     }
   };
 
@@ -291,12 +311,14 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
 
     // 加载原助手的规则和技能内容 / Load original assistant's rules and skills
     try {
-      const [context, skills, skillsList] = await Promise.all([loadAssistantContext(assistant.id), loadAssistantSkills(assistant.id), ipcBridge.fs.listAvailableSkills.invoke()]);
+      const [context, skills, skillsList, mcpConfig] = await Promise.all([loadAssistantContext(assistant.id), loadAssistantSkills(assistant.id), ipcBridge.fs.listAvailableSkills.invoke(), ConfigStorage.get('mcp.config')]);
       setEditContext(context);
       setEditSkills(skills);
       setAvailableSkills(skillsList);
+      setAvailableMcpServers((mcpConfig as IMcpServer[]) || []);
       setSelectedSkills(assistant.enabledSkills || []);
       setCustomSkills(assistant.customSkillNames || []);
+      setSelectedMcpServers(assistant.enabledMcpServers || []);
     } catch (error) {
       console.error('Failed to load assistant content for duplication:', error);
       setEditContext('');
@@ -304,6 +326,8 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
       setAvailableSkills([]);
       setSelectedSkills([]);
       setCustomSkills([]);
+      setAvailableMcpServers([]);
+      setSelectedMcpServers([]);
     }
   };
 
@@ -364,6 +388,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
           enabled: true,
           enabledSkills: selectedSkills,
           customSkillNames: finalCustomSkills,
+          enabledMcpServers: selectedMcpServers,
         };
 
         // 保存规则文件 / Save rule file
@@ -392,6 +417,7 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
           presetAgentType: 'mia',
           enabledSkills: selectedSkills,
           customSkillNames: finalCustomSkills,
+          enabledMcpServers: selectedMcpServers,
         };
 
         // 保存规则文件（如果有更改）/ Save rule file (if changed)
@@ -780,6 +806,47 @@ const AssistantManagement: React.FC<AssistantManagementProps> = ({ message }) =>
                     )}
                   </Collapse.Item>
                 </Collapse>
+              </div>
+            )}
+
+            {/* MCP Servers 配置 / MCP Servers configuration */}
+            {(isCreating || (activeAssistant && !activeAssistant.isBuiltin)) && (
+              <div className='flex-shrink-0 mt-16px'>
+                <div className='flex items-center justify-between mb-12px'>
+                  <Typography.Text bold>{t('settings.assistantMcpServers', { defaultValue: 'MCP Servers' })}</Typography.Text>
+                  <Button size='small' type='outline' icon={<Plus size={14} />} onClick={handleOpenToolsTab} className='rounded-[100px]'>
+                    {t('settings.addMcpTools', { defaultValue: 'Add MCP Tools' })}
+                  </Button>
+                </div>
+                {availableMcpServers.length > 0 ? (
+                  <div className='mt-10px space-y-4px'>
+                    {availableMcpServers.map((server) => (
+                      <div key={server.id} className='flex items-start gap-8px p-8px hover:bg-fill-1 rounded-4px'>
+                        <Checkbox
+                          checked={selectedMcpServers.includes(server.id)}
+                          className='mt-2px cursor-pointer'
+                          onChange={() => {
+                            if (selectedMcpServers.includes(server.id)) {
+                              setSelectedMcpServers(selectedMcpServers.filter((id) => id !== server.id));
+                            } else {
+                              setSelectedMcpServers([...selectedMcpServers, server.id]);
+                            }
+                          }}
+                        />
+                        <div className='flex-1 min-w-0'>
+                          <div className='flex items-center gap-4px'>
+                            <div className='text-13px font-medium text-t-primary'>{server.name}</div>
+                            {server.enabled ? <span className={`text-10px px-4px py-1px rounded ${server.status === 'connected' ? 'bg-green-100 text-green-600' : server.status === 'error' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>{server.status || 'disconnected'}</span> : <span className='text-10px px-4px py-1px bg-fill-2 text-t-secondary rounded'>disabled</span>}
+                          </div>
+                          {server.description && <div className='text-12px text-t-secondary mt-2px line-clamp-2'>{server.description}</div>}
+                          <div className='text-10px text-t-secondary mt-2px'>{server.transport.type === 'stdio' ? `${server.transport.command} ${server.transport.args?.join(' ') || ''}` : server.transport.url}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className='mt-10px text-12px text-t-secondary text-center py-16px'>{t('settings.noMcpServers', { defaultValue: 'No MCP servers configured. Add servers in Tools > MCP Settings.' })}</div>
+                )}
               </div>
             )}
           </div>

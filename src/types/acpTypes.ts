@@ -287,6 +287,15 @@ export interface AcpBackendConfig {
    * These skills will be displayed in the Custom Skills section even after being imported.
    */
   customSkillNames?: string[];
+
+  /**
+   * MCP 服务器 ID 列表，激活用于此助手
+   * 只对 MCP 服务器有访问权限，需在 mcp.config 中单独启用
+   *
+   * List of MCP server IDs enabled for this assistant (only applies when isPreset=true).
+   * Only grants access - servers must also be globally enabled in mcp.config.
+   */
+  enabledMcpServers?: string[];
 }
 
 // 所有后端配置 - 包括暂时禁用的 / All backend configurations - including temporarily disabled ones

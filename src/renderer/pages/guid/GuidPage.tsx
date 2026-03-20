@@ -85,6 +85,7 @@ const GuidPage: React.FC = () => {
     getEffectiveAgentType: agentSelection.getEffectiveAgentType,
     resolvePresetRulesAndSkills: agentSelection.resolvePresetRulesAndSkills,
     resolveEnabledSkills: agentSelection.resolveEnabledSkills,
+    resolveEnabledMcpServers: agentSelection.resolveEnabledMcpServers,
     isMainAgentAvailable: agentSelection.isMainAgentAvailable,
     getAvailableFallbackAgent: agentSelection.getAvailableFallbackAgent,
     currentEffectiveAgentInfo: agentSelection.currentEffectiveAgentInfo,

@@ -1015,8 +1015,25 @@ export class AcpConnection {
    * @param options.forkSession - When true, creates a new session ID while preserving conversation context.
    *                              When false (default), reuses the original session ID.
    *                              为 true 时创建新 session ID 但保留对话上下文；为 false（默认）时复用原 session ID。
+   * @param mcpServers - MCP server configurations to pass to the agent
    */
-  async newSession(cwd: string = process.cwd(), options?: { resumeSessionId?: string; forkSession?: boolean }): Promise<AcpResponse & { sessionId?: string }> {
+  async newSession(
+    cwd: string = process.cwd(),
+    options?: {
+      resumeSessionId?: string;
+      forkSession?: boolean;
+      mcpServers?: {
+        name: string;
+        command?: string;
+        args?: string[];
+        env?: string[];
+        url?: string;
+        type?: string;
+        headers?: string[];
+        description?: string;
+      }[];
+    }
+  ): Promise<AcpResponse & { sessionId?: string }> {
     // Normalize workspace-relative paths:
     // Agents such as qwen already run with `workingDir` as their process cwd.
     // Sending the absolute path again makes some CLIs treat it as a nested relative path.
@@ -1037,7 +1054,7 @@ export class AcpConnection {
 
     const response = await this.sendRequest<AcpResponse & { sessionId?: string }>('session/new', {
       cwd: normalizedCwd,
-      mcpServers: [] as unknown[],
+      mcpServers: options?.mcpServers ?? [],
       // Claude/CodeBuddy ACP uses _meta for resume
       ...(meta && { _meta: meta }),
       // Generic resume parameters for other ACP backends

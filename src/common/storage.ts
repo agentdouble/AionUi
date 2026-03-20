@@ -190,6 +190,8 @@ export type TChatConversation =
           presetContext?: string; // 智能助手的预设规则/提示词 / Preset context from smart assistant
           /** 启用的 skills 列表，用于过滤 SkillManager 加载的 skills / Enabled skills list for filtering SkillManager skills */
           enabledSkills?: string[];
+          /** 启用的 MCP servers ID 列表 / Enabled MCP servers IDs */
+          enabledMcpServers?: string[];
           /** 预设助手 ID，用于在会话面板显示助手名称和头像 / Preset assistant ID for displaying name and avatar in conversation panel */
           presetAssistantId?: string;
           /** 是否置顶会话 / Whether this conversation is pinned */

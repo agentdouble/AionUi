@@ -10,6 +10,7 @@ import { parseError, uuid } from '@/common/utils';
 import type { AcpBackend, AcpModelInfo, AcpPermissionOption, AcpPermissionRequest } from '@/types/acpTypes';
 import { ACP_BACKENDS_ALL } from '@/types/acpTypes';
 import { getDatabase } from '@process/database';
+import type { IMcpServer } from '@/common/storage';
 import { ProcessConfig } from '../initStorage';
 import { addMessage, addOrUpdateMessage, nextTickToLocalFinish } from '../message';
 import { handlePreviewOpenEvent } from '../utils/previewUtils';
@@ -24,6 +25,64 @@ import { hasCronCommands } from './CronCommandDetector';
 import { extractTextFromMessage, processCronInMessage } from './MessageMiddleware';
 import { stripThinkTags } from './ThinkTagDetector';
 
+type UiMcpServerConfig = {
+  name: string;
+  command?: string;
+  args?: string[];
+  env?: string[];
+  url?: string;
+  type?: 'sse' | 'http';
+  headers?: string[];
+  description?: string;
+};
+
+const recordToEnvArray = (env: Record<string, string> | undefined): string[] => {
+  if (!env) return [];
+  return Object.entries(env).map(([key, value]) => `${key}=${value}`);
+};
+
+const recordToHeadersArray = (headers: Record<string, string> | undefined): string[] => {
+  if (!headers) return [];
+  return Object.entries(headers).map(([key, value]) => `${key}: ${value}`);
+};
+
+function transformMcpServersForAgent(mcpServers: IMcpServer[], enabledIds: string[] | undefined): UiMcpServerConfig[] {
+  // Double condition: server must be (1) globally enabled AND (2) enabled for this specific assistant
+  // If enabledIds is undefined or empty, no servers are passed (default: no MCP access)
+  if (!enabledIds || enabledIds.length === 0) {
+    return [];
+  }
+
+  const result: UiMcpServerConfig[] = [];
+  const enabledIdSet = new Set(enabledIds);
+
+  for (const server of mcpServers) {
+    if (!server.enabled) continue;
+    if (!enabledIdSet.has(server.id)) continue;
+
+    if (server.transport.type === 'stdio') {
+      result.push({
+        name: server.name,
+        command: server.transport.command,
+        args: server.transport.args || [],
+        env: recordToEnvArray(server.transport.env),
+        description: server.description,
+      });
+    } else if (server.transport.type === 'sse' || server.transport.type === 'http' || server.transport.type === 'streamable_http') {
+      const type = server.transport.type === 'streamable_http' ? 'http' : server.transport.type;
+      result.push({
+        name: server.name,
+        url: server.transport.url,
+        type,
+        headers: recordToHeadersArray(server.transport.headers),
+        description: server.description,
+      });
+    }
+  }
+
+  return result;
+}
+
 interface AcpAgentManagerData {
   workspace?: string;
   backend: AcpBackend;
@@ -34,6 +93,8 @@ interface AcpAgentManagerData {
   presetContext?: string; // 智能助手的预设规则/提示词 / Preset context from smart assistant
   /** 启用的 skills 列表，用于过滤 SkillManager 加载的 skills / Enabled skills list for filtering SkillManager skills */
   enabledSkills?: string[];
+  /** 启用的 MCP servers ID 列表，用于传递 MCP 配置到 agent / Enabled MCP servers IDs for passing MCP config to agent */
+  enabledMcpServers?: string[];
   /** Force yolo mode (auto-approve) - used by CronService for scheduled tasks */
   yoloMode?: boolean;
   /** ACP session ID for resume support / ACP session ID 用于会话恢复 */
@@ -147,6 +208,18 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData, AcpPermissio
         mainWarn('[AcpAgentManager]', 'Custom backend specified but customAgentId is missing');
       }
 
+      // Load and transform MCP servers for this agent
+      // 加载并转换 MCP 服务器配置
+      let agentMcpServers: UiMcpServerConfig[] = [];
+      try {
+        const mcpConfig = await ProcessConfig.get('mcp.config');
+        if (Array.isArray(mcpConfig)) {
+          agentMcpServers = transformMcpServersForAgent(mcpConfig, data.enabledMcpServers);
+        }
+      } catch (error) {
+        mainWarn('[AcpAgentManager]', 'Failed to load MCP config:', error);
+      }
+
       this.agent = new AcpAgent({
         id: data.conversation_id,
         backend: data.backend,
@@ -164,6 +237,7 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData, AcpPermissio
           yoloMode: yoloMode,
           acpSessionId: data.acpSessionId,
           acpSessionUpdatedAt: data.acpSessionUpdatedAt,
+          mcpServers: agentMcpServers,
         },
         onSessionIdUpdate: (sessionId: string) => {
           // Save ACP session ID to database for resume support

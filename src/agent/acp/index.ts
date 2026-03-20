@@ -82,6 +82,17 @@ export interface AcpAgentConfig {
     acpSessionId?: string;
     /** Last update time of ACP session / ACP session 最后更新时间 */
     acpSessionUpdatedAt?: number;
+    /** MCP server configurations for this session */
+    mcpServers?: {
+      name: string;
+      command?: string;
+      args?: string[];
+      env?: string[];
+      url?: string;
+      type?: string;
+      headers?: string[];
+      description?: string;
+    }[];
   };
   onStreamEvent: (data: IResponseMessage) => void;
   onSignalEvent?: (data: IResponseMessage) => void; // 新增：仅发送信号，不更新UI
@@ -106,6 +117,17 @@ export class AcpAgent {
     acpSessionId?: string;
     /** Last update time of ACP session / ACP session 最后更新时间 */
     acpSessionUpdatedAt?: number;
+    /** MCP server configurations for this session */
+    mcpServers?: {
+      name: string;
+      command?: string;
+      args?: string[];
+      env?: string[];
+      url?: string;
+      type?: string;
+      headers?: string[];
+      description?: string;
+    }[];
   };
   private connection: AcpConnection;
   private adapter: AcpAdapter;
@@ -1167,6 +1189,7 @@ export class AcpAgent {
    */
   private async createOrResumeSession(): Promise<void> {
     const resumeSessionId = this.extra.acpSessionId;
+    const mcpServers = this.extra.mcpServers;
 
     // If we have a stored session ID, attempt to resume it.
     // Resume can fail when the ACP bridge package changed (e.g. claude-code-acp → claude-agent-acp)
@@ -1176,6 +1199,7 @@ export class AcpAgent {
         const response = await this.connection.newSession(this.extra.workspace, {
           resumeSessionId,
           forkSession: false,
+          mcpServers,
         });
         if (response.sessionId && response.sessionId !== resumeSessionId) {
           this.extra.acpSessionId = response.sessionId;
@@ -1188,7 +1212,7 @@ export class AcpAgent {
     }
 
     // No stored session or resume failed — create a brand new session
-    const response = await this.connection.newSession(this.extra.workspace);
+    const response = await this.connection.newSession(this.extra.workspace, { mcpServers });
     if (response.sessionId) {
       this.extra.acpSessionId = response.sessionId;
       this.onSessionIdUpdate?.(response.sessionId);

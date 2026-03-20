@@ -40,6 +40,7 @@ export type GuidSendDeps = {
   getEffectiveAgentType: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => EffectiveAgentInfo;
   resolvePresetRulesAndSkills: (agentInfo: { backend: AcpBackend; customAgentId?: string; context?: string } | undefined) => Promise<{ rules?: string; skills?: string }>;
   resolveEnabledSkills: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => string[] | undefined;
+  resolveEnabledMcpServers: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => string[] | undefined;
   isMainAgentAvailable: (agentType: PresetAgentType) => boolean;
   getAvailableFallbackAgent: () => PresetAgentType | null;
   currentEffectiveAgentInfo: EffectiveAgentInfo;
@@ -68,7 +69,7 @@ export type GuidSendResult = {
  * Hook that manages the send logic for all conversation types (gemini/openclaw/nanobot/acp).
  */
 export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
-  const { input, setInput, files, setFiles, dir, setDir, setLoading, selectedAgent, selectedAgentKey, selectedAgentInfo, isPresetAgent, selectedMode, selectedAcpModel, currentModel, findAgentByKey, getEffectiveAgentType, resolvePresetRulesAndSkills, resolveEnabledSkills, isMainAgentAvailable, getAvailableFallbackAgent, currentEffectiveAgentInfo, isGoogleAuth, setMentionOpen, setMentionQuery, setMentionSelectorOpen, setMentionActiveIndex, navigate, closeAllTabs, openTab, t } = deps;
+  const { input, setInput, files, setFiles, dir, setDir, setLoading, selectedAgent, selectedAgentKey, selectedAgentInfo, isPresetAgent, selectedMode, selectedAcpModel, currentModel, findAgentByKey, getEffectiveAgentType, resolvePresetRulesAndSkills, resolveEnabledSkills, resolveEnabledMcpServers, isMainAgentAvailable, getAvailableFallbackAgent, currentEffectiveAgentInfo, isGoogleAuth, setMentionOpen, setMentionQuery, setMentionSelectorOpen, setMentionActiveIndex, navigate, closeAllTabs, openTab, t } = deps;
 
   const handleSend = useCallback(async () => {
     const isCustomWorkspace = !!dir;
@@ -81,6 +82,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
 
     const { rules: presetRules } = await resolvePresetRulesAndSkills(agentInfo);
     const enabledSkills = resolveEnabledSkills(agentInfo);
+    const enabledMcpServers = resolveEnabledMcpServers(agentInfo);
 
     let finalEffectiveAgentType = effectiveAgentType;
     if (isPreset && !isMainAgentAvailable(effectiveAgentType)) {
@@ -283,6 +285,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
             customAgentId: acpAgentInfo?.customAgentId,
             presetContext: isPreset ? presetRules : undefined,
             enabledSkills: isPreset ? enabledSkills : undefined,
+            enabledMcpServers: enabledMcpServers,
             presetAssistantId: isPreset ? agentInfo?.customAgentId || acpAgentInfo?.customAgentId : undefined,
             sessionMode: selectedMode,
             currentModelId: selectedAcpModel || undefined,
@@ -314,7 +317,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         throw error;
       }
     }
-  }, [input, files, dir, selectedAgent, selectedAgentKey, selectedAgentInfo, isPresetAgent, selectedMode, selectedAcpModel, currentModel, findAgentByKey, getEffectiveAgentType, resolvePresetRulesAndSkills, resolveEnabledSkills, isMainAgentAvailable, getAvailableFallbackAgent, navigate, closeAllTabs, openTab, t]);
+  }, [input, files, dir, selectedAgent, selectedAgentKey, selectedAgentInfo, isPresetAgent, selectedMode, selectedAcpModel, currentModel, findAgentByKey, getEffectiveAgentType, resolvePresetRulesAndSkills, resolveEnabledSkills, resolveEnabledMcpServers, isMainAgentAvailable, getAvailableFallbackAgent, navigate, closeAllTabs, openTab, t]);
 
   const sendMessageHandler = useCallback(() => {
     setLoading(true);

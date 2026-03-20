@@ -500,6 +500,8 @@ export interface ICreateConversationParams {
     presetRules?: string; // system rules injected at initialization
     /** Enabled skills list for filtering SkillManager skills */
     enabledSkills?: string[];
+    /** Enabled MCP server IDs for this assistant */
+    enabledMcpServers?: string[];
     /**
      * Preset context/rules to inject into the first message.
      * Used by smart assistants to provide custom prompts/rules.

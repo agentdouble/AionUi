@@ -88,6 +88,7 @@ export type GuidAgentSelectionResult = {
   resolvePresetContext: (agentInfo: { backend: AcpBackend; customAgentId?: string; context?: string } | undefined) => Promise<string | undefined>;
   resolvePresetAgentType: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => PresetAgentType;
   resolveEnabledSkills: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => string[] | undefined;
+  resolveEnabledMcpServers: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => string[] | undefined;
   isMainAgentAvailable: (agentType: PresetAgentType) => boolean;
   getAvailableFallbackAgent: () => PresetAgentType | null;
   getEffectiveAgentType: (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined) => EffectiveAgentInfo;
@@ -506,6 +507,16 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     [customAgents]
   );
 
+  const resolveEnabledMcpServers = useCallback(
+    (agentInfo: { backend: AcpBackend; customAgentId?: string } | undefined): string[] | undefined => {
+      if (!agentInfo) return [];
+      if (agentInfo.backend !== 'custom') return [];
+      const customAgent = customAgents.find((agent) => agent.id === agentInfo.customAgentId);
+      return customAgent?.enabledMcpServers ?? [];
+    },
+    [customAgents]
+  );
+
   // --- Availability checks ---
   const isMainAgentAvailable = useCallback(
     (agentType: PresetAgentType): boolean => {
@@ -606,6 +617,7 @@ export const useGuidAgentSelection = ({ modelList, isGoogleAuth, localeKey }: Us
     resolvePresetContext,
     resolvePresetAgentType,
     resolveEnabledSkills,
+    resolveEnabledMcpServers,
     isMainAgentAvailable,
     getAvailableFallbackAgent,
     getEffectiveAgentType,

@@ -20,6 +20,7 @@ import SystemModalContent from './contents/SystemModalContent';
 import ToolsModalContent from './contents/ToolsModalContent';
 import WebuiModalContent from './contents/WebuiModalContent';
 import { SettingsViewModeProvider } from './settingsViewContext';
+import { SettingsTabProvider, useSettingsTab } from './settingsTabContext';
 
 // ==================== 常量定义 / Constants ====================
 
@@ -117,9 +118,16 @@ export const SubModal: React.FC<SubModalProps> = ({ visible, onCancel, title, ch
  */
 const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaultTab = 'model' }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<SettingTab>(defaultTab);
+  const { activeTab, setActiveTab } = useSettingsTab();
   const [isMobile, setIsMobile] = useState(false);
   const resizeTimerRef = useRef<number | undefined>(undefined);
+
+  // 当 visible 变为 true 且有 defaultTab 时，更新 activeTab
+  useEffect(() => {
+    if (visible && defaultTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [visible, defaultTab, setActiveTab]);
 
   /**
    * 处理窗口尺寸变化，更新移动端状态
@@ -197,18 +205,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaul
     }
   };
 
-  /**
-   * 切换标签页 / Switch tab
-   * @param tab - 目标标签页 / Target tab
-   */
-  const handleTabChange = useCallback((tab: SettingTab) => {
-    setActiveTab(tab);
-  }, []);
-
   // 移动端菜单（Tabs切换）/ Mobile menu (Tabs)
   const mobileMenu = (
     <div className='mt-16px mb-20px overflow-x-auto'>
-      <Tabs activeTab={activeTab} onChange={handleTabChange} type='line' size='default' className='settings-mobile-tabs [&_.arco-tabs-nav]:border-b-0'>
+      <Tabs activeTab={activeTab} onChange={setActiveTab} type='line' size='default' className='settings-mobile-tabs [&_.arco-tabs-nav]:border-b-0'>
         {menuItems.map((item) => (
           <Tabs.TabPane key={item.key} title={item.label} />
         ))}
@@ -239,30 +239,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaul
 
   return (
     <SettingsViewModeProvider value='modal'>
-      <AionModal
-        visible={visible}
-        onCancel={onCancel}
-        footer={null}
-        className='settings-modal'
-        style={{
-          width: isMobile ? `min(calc(100vw - 32px), ${MODAL_WIDTH.mobile}px)` : `clamp(var(--app-min-width, 360px), 100vw, ${MODAL_WIDTH.desktop}px)`,
-          maxHeight: isMobile ? MODAL_HEIGHT.mobile : undefined,
-          borderRadius: '16px',
-        }}
-        contentStyle={{ padding: isMobile ? '16px' : '24px 24px 32px' }}
-        title={t('settings.title')}
-      >
-        <div
-          className={classNames('overflow-hidden gap-0', isMobile ? 'flex flex-col min-h-0' : 'flex mt-20px')}
+      <SettingsTabProvider>
+        <AionModal
+          visible={visible}
+          onCancel={onCancel}
+          footer={null}
+          className='settings-modal'
           style={{
-            height: isMobile ? MODAL_HEIGHT.mobileContent : `${MODAL_HEIGHT.desktop}px`,
+            width: isMobile ? `min(calc(100vw - 32px), ${MODAL_WIDTH.mobile}px)` : `clamp(var(--app-min-width, 360px), 100vw, ${MODAL_WIDTH.desktop}px)`,
+            maxHeight: isMobile ? MODAL_HEIGHT.mobile : undefined,
+            borderRadius: '16px',
           }}
+          contentStyle={{ padding: isMobile ? '16px' : '24px 24px 32px' }}
+          title={t('settings.title')}
         >
-          {isMobile ? mobileMenu : desktopMenu}
+          <div
+            className={classNames('overflow-hidden gap-0', isMobile ? 'flex flex-col min-h-0' : 'flex mt-20px')}
+            style={{
+              height: isMobile ? MODAL_HEIGHT.mobileContent : `${MODAL_HEIGHT.desktop}px`,
+            }}
+          >
+            {isMobile ? mobileMenu : desktopMenu}
 
-          <AionScrollArea className={classNames('flex-1 min-h-0', isMobile ? 'overflow-y-auto' : 'flex flex-col pl-24px gap-16px')}>{renderContent()}</AionScrollArea>
-        </div>
-      </AionModal>
+            <AionScrollArea className={classNames('flex-1 min-h-0', isMobile ? 'overflow-y-auto' : 'flex flex-col pl-24px gap-16px')}>{renderContent()}</AionScrollArea>
+          </div>
+        </AionModal>
+      </SettingsTabProvider>
     </SettingsViewModeProvider>
   );
 };
